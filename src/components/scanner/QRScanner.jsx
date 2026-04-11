@@ -88,6 +88,16 @@ export default function QRScanner({ onScan, isProcessing }) {
 
   const startCamera = async () => {
     setError(null);
+    if (!window.isSecureContext) {
+      setError(
+        'Camera needs HTTPS (or localhost on this device). From your phone use https://YOUR_PC_IP:5173 after restarting npm run dev, and tap through Safari’s certificate warning once.'
+      );
+      return;
+    }
+    if (!navigator.mediaDevices?.getUserMedia) {
+      setError('This browser does not support camera access here.');
+      return;
+    }
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: { ideal: 'environment' } },
@@ -97,7 +107,16 @@ export default function QRScanner({ onScan, isProcessing }) {
       setPendingStream(stream);
       setCameraActive(true);
     } catch (err) {
-      setError('Camera access was denied or is unavailable.');
+      const name = err?.name || '';
+      if (name === 'NotAllowedError' || name === 'PermissionDismissedError') {
+        setError('Camera permission was blocked. Allow camera for this site in your browser or system settings.');
+      } else if (name === 'NotFoundError' || name === 'DevicesNotFoundError') {
+        setError('No camera was found on this device.');
+      } else if (name === 'NotReadableError' || name === 'TrackStartError') {
+        setError('Camera is already in use or could not be started. Close other apps using the camera and try again.');
+      } else {
+        setError('Camera access was denied or is unavailable.');
+      }
     }
   };
 

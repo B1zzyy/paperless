@@ -7,6 +7,7 @@ import { format } from 'date-fns';
 import { motion } from 'framer-motion';
 import { Store, Calendar, CreditCard, MapPin, Receipt, Scissors } from 'lucide-react';
 import { Separator } from '@/components/ui/separator';
+import { normalizeEntityList } from '@/lib/entity-list';
 
 const paymentLabels = {
   cash: 'Cash',
@@ -22,7 +23,8 @@ export default function SharedReceiptView() {
   const { data: shared, isLoading } = useQuery({
     queryKey: ['shared-receipt', shareId],
     queryFn: async () => {
-      const list = await db.entities.SharedReceipt.filter({ id: shareId });
+      const raw = await db.entities.SharedReceipt.filter({ id: shareId });
+      const list = normalizeEntityList(raw);
       return list[0];
     },
     enabled: !!shareId,

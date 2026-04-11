@@ -53,10 +53,16 @@ export const sampleReceipts = [
 ];
 
 export function parseQRData(rawData) {
-  // Try to parse as JSON first
+  const trimmed = typeof rawData === 'string' ? rawData.trim() : '';
   try {
-    const data = JSON.parse(rawData);
-    if (data.store_name && data.total !== undefined) {
+    const data = JSON.parse(trimmed);
+    const total = data.total;
+    const hasTotal =
+      total !== undefined &&
+      total !== null &&
+      total !== '' &&
+      !Number.isNaN(Number(total));
+    if (data.store_name && hasTotal) {
       return { success: true, data };
     }
   } catch {}

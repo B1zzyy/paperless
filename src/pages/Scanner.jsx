@@ -9,6 +9,7 @@ import { toast } from 'sonner';
 import QRScanner from '@/components/scanner/QRScanner';
 import ManualInput from '@/components/scanner/ManualInput';
 import { parseQRData } from '@/lib/qr-utils';
+import { mergeReceiptIntoList } from '@/lib/entity-list';
 
 export default function Scanner() {
   const [isProcessing, setIsProcessing] = useState(false);
@@ -28,6 +29,18 @@ export default function Scanner() {
     const receiptData = result.data;
 
     const created = await db.entities.Receipt.create(receiptData);
+    // Same as kiosk: API often returns only { id }; scanned fields must stay — put receiptData last.
+    const saved = { ...created, ...receiptData };
+    let receiptId = saved.id ?? saved._id;
+    if (receiptId != null && receiptId !== '') {
+      receiptId = String(receiptId);
+    } else {
+      receiptId = `local-${crypto.randomUUID()}`;
+      saved.id = receiptId;
+    }
+
+    queryClient.setQueryData(['receipt', receiptId], saved);
+    queryClient.setQueryData(['receipts'], (old) => mergeReceiptIntoList(old, saved));
     queryClient.invalidateQueries({ queryKey: ['receipts'] });
     setIsProcessing(false);
 
@@ -36,7 +49,7 @@ export default function Scanner() {
       duration: 3000,
     });
 
-    setTimeout(() => navigate(`/receipt/${created.id}`), 800);
+    setTimeout(() => navigate(`/receipt/${encodeURIComponent(receiptId)}`), 800);
   };
 
   return (

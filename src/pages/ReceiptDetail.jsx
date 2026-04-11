@@ -1,15 +1,16 @@
 const db = globalThis.__B44_DB__ || { auth:{ isAuthenticated: async()=>false, me: async()=>null }, entities:new Proxy({}, { get:()=>({ filter:async()=>[], get:async()=>null, create:async()=>({}), update:async()=>({}), delete:async()=>({}) }) }), integrations:{ Core:{ UploadFile:async()=>({ file_url:'' }) } } };
 
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { format } from 'date-fns';
 import { motion } from 'framer-motion';
 import { ArrowLeft, Store, Calendar, CreditCard, MapPin, Receipt, Share2 } from 'lucide-react';
 import ShareSheet from '@/components/receipts/ShareSheet';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
+import { normalizeEntityList } from '@/lib/entity-list';
 
 const paymentLabels = {
   cash: 'Cash',
@@ -20,17 +21,26 @@ const paymentLabels = {
 };
 
 export default function ReceiptDetail() {
-  const id = window.location.pathname.split('/receipt/')[1];
+  const { id: idParam } = useParams();
+  const id = idParam ? decodeURIComponent(idParam) : '';
   const [showShare, setShowShare] = useState(false);
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
 
   const { data: receipt, isLoading } = useQuery({
     queryKey: ['receipt', id],
     queryFn: async () => {
-      const list = await db.entities.Receipt.filter({ id });
-      return list[0];
+      const raw = await db.entities.Receipt.filter({ id });
+      const list = normalizeEntityList(raw);
+      const remote = list[0];
+      if (remote) {
+        queryClient.setQueryData(['receipt', id], remote);
+        return remote;
+      }
+      // Right after a scan, create() merged data may only exist in cache; filter can lag or omit id shape.
+      return queryClient.getQueryData(['receipt', id]) ?? null;
     },
-    enabled: !!id,
+    enabled: Boolean(id && id !== 'undefined'),
   });
 
   if (isLoading) {

@@ -7,12 +7,16 @@ import { motion } from 'framer-motion';
 import { Wallet } from 'lucide-react';
 import ReceiptCard from '@/components/receipts/ReceiptCard';
 import EmptyState from '@/components/receipts/EmptyState';
+import { normalizeEntityList } from '@/lib/entity-list';
 
 export default function Home() {
   const [showAll, setShowAll] = useState(false);
   const { data: receipts = [], isLoading } = useQuery({
     queryKey: ['receipts'],
-    queryFn: () => db.entities.Receipt.list('-purchase_date'),
+    queryFn: async () => {
+      const raw = await db.entities.Receipt.list('-purchase_date');
+      return normalizeEntityList(raw);
+    },
   });
 
   const totalSpent = receipts.reduce((sum, r) => sum + (r.total || 0), 0);

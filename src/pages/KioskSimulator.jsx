@@ -6,7 +6,8 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Plus, Trash2, ShoppingCart, CheckCircle2, Monitor } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { generateQRCodeURL } from '@/lib/qr-utils';
+import { useQueryClient } from '@tanstack/react-query';
+import { mergeReceiptIntoList } from '@/lib/entity-list';
 
 const DEFAULT_ITEMS = [
   { name: 'Whole Milk 2L', quantity: 1, unit_price: 2.49, total: 2.49 },
@@ -18,6 +19,7 @@ const STAGE_PAYING = 'paying';
 const STAGE_QR = 'qr';
 
 export default function KioskSimulator() {
+  const queryClient = useQueryClient();
   const [stage, setStage] = useState(STAGE_CHECKOUT);
   const [storeName, setStoreName] = useState('FreshMart Supermarket');
   const [items, setItems] = useState(DEFAULT_ITEMS);
@@ -42,7 +44,7 @@ export default function KioskSimulator() {
     setStage(STAGE_PAYING);
     // Simulate payment processing delay
     await new Promise(r => setTimeout(r, 2000));
-    const created = await db.entities.Receipt.create({
+    const receiptPayload = {
       store_name: storeName,
       purchase_date: new Date().toISOString(),
       items,
@@ -51,8 +53,17 @@ export default function KioskSimulator() {
       total,
       payment_method: 'credit_card',
       receipt_id: `SIM-${Date.now()}`,
-    });
-    setReceipt(created);
+    };
+    const created = await db.entities.Receipt.create(receiptPayload);
+    // QR must encode the full receipt; create() often returns only { id } (or {} when stubbed).
+    const merged = { ...created, ...receiptPayload };
+    setReceipt(merged);
+    const rid = merged.id ?? merged._id;
+    if (rid != null && rid !== '') {
+      queryClient.setQueryData(['receipt', String(rid)], merged);
+      queryClient.setQueryData(['receipts'], (old) => mergeReceiptIntoList(old, { ...merged, id: String(rid) }));
+      queryClient.invalidateQueries({ queryKey: ['receipts'] });
+    }
     setStage(STAGE_QR);
   };
 
