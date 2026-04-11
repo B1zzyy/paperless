@@ -3,8 +3,16 @@ const db = globalThis.__B44_DB__ || { auth:{ isAuthenticated: async()=>false, me
 import React, { createContext, useState, useContext, useEffect } from 'react';
 
 import { appParams } from '@/lib/app-params';
+import { isSupabaseMode } from '@/lib/supabase-config';
+import { getSupabase } from '@/lib/supabase-client';
 
 const AuthContext = createContext();
+
+function isSupabasePublicPath() {
+  if (typeof window === 'undefined') return false;
+  const p = window.location.pathname;
+  return p === '/login' || p.startsWith('/split/');
+}
 
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
@@ -18,13 +26,81 @@ export const AuthProvider = ({ children }) => {
     checkAppState();
   }, []);
 
+  // After email magic link, Supabase may establish the session slightly after first paint
+  useEffect(() => {
+    if (!isSupabaseMode()) return undefined;
+    const supabase = getSupabase();
+    if (!supabase) return undefined;
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (session?.user) {
+        const u = session.user;
+        setUser({ id: u.id, email: u.email, role: 'user' });
+        setIsAuthenticated(true);
+        setAuthError(null);
+      }
+    });
+    return () => subscription.unsubscribe();
+  }, []);
+
   const checkAppState = async () => {
     try {
       setIsLoadingPublicSettings(true);
       setAuthError(null);
-      
-      // First, check app public settings (with token if available)
-      // This will tell us if auth is required, user not registered, etc.
+
+      if (isSupabaseMode()) {
+        const supabase = getSupabase();
+        setIsLoadingPublicSettings(false);
+        if (!supabase) {
+          setAuthError({ type: 'unknown', message: 'Supabase URL or anon key missing.' });
+          setIsLoadingAuth(false);
+          return;
+        }
+        setIsLoadingAuth(true);
+        let {
+          data: { session },
+        } = await supabase.auth.getSession();
+
+        if (!session && isSupabasePublicPath()) {
+          setUser(null);
+          setIsAuthenticated(false);
+          setAuthError(null);
+          setIsLoadingAuth(false);
+          return;
+        }
+
+        if (!session) {
+          if (isSupabasePublicPath()) {
+            setUser(null);
+            setIsAuthenticated(false);
+            setAuthError(null);
+            setIsLoadingAuth(false);
+            return;
+          }
+          setAuthError({
+            type: 'auth_required',
+            message: 'Sign in with email to use your receipt wallet.',
+          });
+          setIsAuthenticated(false);
+          setUser(null);
+          setIsLoadingAuth(false);
+          return;
+        }
+
+        if (session?.user) {
+          const u = session.user;
+          setUser({ id: u.id, email: u.email, role: 'user' });
+          setIsAuthenticated(true);
+        } else {
+          setIsAuthenticated(false);
+          setUser(null);
+        }
+        setIsLoadingAuth(false);
+        return;
+      }
+
+      // Base44: check app public settings (with token if available)
       const appClient = createAxiosClient({
         baseURL: `/api/apps/public`,
         headers: {

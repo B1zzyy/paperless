@@ -13,6 +13,7 @@ import ReceiptDetail from '@/pages/ReceiptDetail';
 import TestQR from '@/pages/TestQR';
 import KioskSimulator from '@/pages/KioskSimulator';
 import SharedReceiptView from '@/pages/SharedReceiptView';
+import Login from '@/pages/Login';
 
 const AuthenticatedApp = () => {
   const { isLoadingAuth, isLoadingPublicSettings, authError, navigateToLogin } = useAuth();
@@ -40,6 +41,7 @@ const AuthenticatedApp = () => {
   // Render the main app
   return (
     <Routes>
+      <Route path="/login" element={<Login />} />
       <Route path="/split/:id" element={<SharedReceiptView />} />
       <Route element={<AppShell />}>
         <Route path="/" element={<Home />} />
