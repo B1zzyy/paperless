@@ -1,0 +1,23 @@
+{
+  "name": "SharedReceipt",
+  "type": "object",
+  "properties": {
+    "receipt_id": {
+      "type": "string",
+      "description": "ID of the original Receipt entity"
+    },
+    "split_percent": {
+      "type": "number",
+      "description": "Percentage of the total to share (e.g. 50 for 50%)"
+    },
+    "receipt_snapshot": {
+      "type": "object",
+      "description": "Snapshot of the receipt data at time of sharing"
+    }
+  },
+  "required": [
+    "receipt_id",
+    "split_percent",
+    "receipt_snapshot"
+  ]
+}

@@ -1,0 +1,72 @@
+{
+  "name": "Receipt",
+  "type": "object",
+  "properties": {
+    "store_name": {
+      "type": "string",
+      "description": "Name of the store or business"
+    },
+    "store_address": {
+      "type": "string",
+      "description": "Address of the store"
+    },
+    "purchase_date": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Date and time of purchase"
+    },
+    "items": {
+      "type": "array",
+      "description": "List of purchased items",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "quantity": {
+            "type": "number"
+          },
+          "unit_price": {
+            "type": "number"
+          },
+          "total": {
+            "type": "number"
+          }
+        }
+      }
+    },
+    "subtotal": {
+      "type": "number"
+    },
+    "tax": {
+      "type": "number"
+    },
+    "total": {
+      "type": "number"
+    },
+    "currency": {
+      "type": "string",
+      "default": "USD"
+    },
+    "payment_method": {
+      "type": "string",
+      "enum": [
+        "cash",
+        "credit_card",
+        "debit_card",
+        "mobile_pay",
+        "other"
+      ]
+    },
+    "receipt_id": {
+      "type": "string",
+      "description": "Unique receipt identifier from the QR code"
+    }
+  },
+  "required": [
+    "store_name",
+    "total",
+    "purchase_date"
+  ]
+}
