@@ -19,13 +19,14 @@ export default function ShareSheet({ receipt, onClose }) {
 
   const activeSplit = customValue ? parseFloat(customValue) : splitPercent;
   const hasSplit = activeSplit !== null && activeSplit !== undefined && !isNaN(activeSplit);
-  const splitTotal = ((receipt.total || 0) * activeSplit) / 100;
+  const effectiveSplit = hasSplit ? activeSplit : 100;
+  const splitTotal = ((receipt.total || 0) * effectiveSplit) / 100;
 
   const handleGenerate = async () => {
     setIsGenerating(true);
     const shared = await db.entities.SharedReceipt.create({
       receipt_id: receipt.id,
-      split_percent: hasSplit ? activeSplit : 100,
+      split_percent: effectiveSplit,
       receipt_snapshot: receipt,
     });
     const link = `${window.location.origin}/split/${shared.id}`;
@@ -133,7 +134,9 @@ export default function ShareSheet({ receipt, onClose }) {
               </div>
               <p className="text-sm font-medium mb-1">Link ready!</p>
               <p className="text-xs text-muted-foreground mb-5">
-                Share this with the person paying {activeSplit}% (${splitTotal.toFixed(2)})
+                {effectiveSplit === 100
+                  ? `Share this full receipt (${splitTotal.toFixed(2)})`
+                  : `Share this with the person paying ${effectiveSplit}% (${splitTotal.toFixed(2)})`}
               </p>
               <div className="w-full bg-secondary/60 rounded-xl px-4 py-3 text-xs text-muted-foreground font-mono truncate mb-4">
                 {generatedLink}

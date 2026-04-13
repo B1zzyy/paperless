@@ -48,6 +48,7 @@ export default function SharedReceiptView() {
 
   const receipt = shared.receipt_snapshot;
   const pct = shared.split_percent;
+  const isSplitView = pct < 100;
   const splitTotal = ((receipt.total || 0) * pct) / 100;
 
   return (
@@ -58,11 +59,13 @@ export default function SharedReceiptView() {
           <div className="flex items-center gap-2 mb-1">
             <Scissors className="w-3.5 h-3.5 text-primary" />
             <p className="text-xs font-medium text-primary uppercase tracking-widest">
-              Split Receipt · Your {pct}%
+              {isSplitView ? `Split Receipt · Your ${pct}%` : 'Shared Receipt'}
             </p>
           </div>
           <p className="text-xs text-muted-foreground">
-            Someone shared this receipt with you. Below is your portion.
+            {isSplitView
+              ? 'Someone shared this receipt with you. Below is your portion.'
+              : 'Someone shared this full receipt with you.'}
           </p>
         </motion.div>
 
@@ -130,8 +133,14 @@ export default function SharedReceiptView() {
                         )}
                       </div>
                       <div className="text-right">
-                        <p className="text-xs text-muted-foreground line-through">${item.total?.toFixed(2)}</p>
-                        <p className="text-sm font-semibold text-primary">${splitItemTotal.toFixed(2)}</p>
+                        {isSplitView ? (
+                          <>
+                            <p className="text-xs text-muted-foreground line-through">${item.total?.toFixed(2)}</p>
+                            <p className="text-sm font-semibold text-primary">${splitItemTotal.toFixed(2)}</p>
+                          </>
+                        ) : (
+                          <p className="text-sm font-semibold">${item.total?.toFixed(2)}</p>
+                        )}
                       </div>
                     </div>
                   );
@@ -147,8 +156,14 @@ export default function SharedReceiptView() {
                 <div className="flex justify-between text-sm text-muted-foreground">
                   <span>Subtotal</span>
                   <div className="text-right">
-                    <span className="line-through mr-2">${receipt.subtotal?.toFixed(2)}</span>
-                    <span className="text-foreground">${((receipt.subtotal * pct) / 100).toFixed(2)}</span>
+                    {isSplitView ? (
+                      <>
+                        <span className="line-through mr-2">${receipt.subtotal?.toFixed(2)}</span>
+                        <span className="text-foreground">${((receipt.subtotal * pct) / 100).toFixed(2)}</span>
+                      </>
+                    ) : (
+                      <span className="text-foreground">${receipt.subtotal?.toFixed(2)}</span>
+                    )}
                   </div>
                 </div>
               )}
@@ -156,18 +171,28 @@ export default function SharedReceiptView() {
                 <div className="flex justify-between text-sm text-muted-foreground">
                   <span>Tax</span>
                   <div className="text-right">
-                    <span className="line-through mr-2">${receipt.tax?.toFixed(2)}</span>
-                    <span className="text-foreground">${((receipt.tax * pct) / 100).toFixed(2)}</span>
+                    {isSplitView ? (
+                      <>
+                        <span className="line-through mr-2">${receipt.tax?.toFixed(2)}</span>
+                        <span className="text-foreground">${((receipt.tax * pct) / 100).toFixed(2)}</span>
+                      </>
+                    ) : (
+                      <span className="text-foreground">${receipt.tax?.toFixed(2)}</span>
+                    )}
                   </div>
                 </div>
               )}
               <Separator className="my-2" />
               <div className="flex justify-between items-center">
                 <div>
-                  <p className="text-base font-bold">Your Total</p>
-                  <p className="text-xs text-muted-foreground">{pct}% of ${receipt.total?.toFixed(2)}</p>
+                  <p className="text-base font-bold">{isSplitView ? 'Your Total' : 'Total'}</p>
+                  {isSplitView && (
+                    <p className="text-xs text-muted-foreground">{pct}% of ${receipt.total?.toFixed(2)}</p>
+                  )}
                 </div>
-                <span className="text-2xl font-bold text-primary">${splitTotal.toFixed(2)}</span>
+                <span className={`text-2xl font-bold ${isSplitView ? 'text-primary' : ''}`}>
+                  ${isSplitView ? splitTotal.toFixed(2) : receipt.total?.toFixed(2)}
+                </span>
               </div>
             </div>
           </div>
