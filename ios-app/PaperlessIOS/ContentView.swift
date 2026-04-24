@@ -10,7 +10,7 @@ private enum AppTab: Hashable {
 struct ContentView: View {
     @State private var selectedTab: AppTab = .receipts
     @State private var selectedReceipt: ReceiptModel?
-    @State private var receipts = MockData.receipts
+    @StateObject private var receiptStore = ReceiptStore()
     @State private var deferNextTotalAnimation = false
     @State private var totalAnimationReleaseToken = 0
     @State private var displayedTotal = 0.0
@@ -35,7 +35,7 @@ struct ContentView: View {
                     case .receipts:
                         ReceiptsView(
                             selectedReceipt: $selectedReceipt,
-                            receipts: $receipts,
+                            receipts: receiptStore.receipts,
                             deferNextTotalAnimation: $deferNextTotalAnimation,
                             totalAnimationReleaseToken: totalAnimationReleaseToken,
                             displayedTotal: displayedTotal
@@ -43,7 +43,7 @@ struct ContentView: View {
                     case .scan:
                         ScanView { scannedReceipt in
                             deferNextTotalAnimation = true
-                            receipts.insert(scannedReceipt, at: 0)
+                            receiptStore.add(scannedReceipt)
                             selectedTab = .receipts
                             DispatchQueue.main.async {
                                 Haptics.success()
@@ -93,7 +93,7 @@ struct ContentView: View {
         }
     }
 
-    private var totalSpent: Double { receipts.reduce(0) { $0 + $1.total } }
+    private var totalSpent: Double { receiptStore.receipts.reduce(0) { $0 + $1.total } }
 
     private func animateTotal(to newValue: Double) {
         totalAnimationTask?.cancel()
@@ -187,7 +187,7 @@ struct ContentView: View {
 
 private struct ReceiptsView: View {
     @Binding var selectedReceipt: ReceiptModel?
-    @Binding var receipts: [ReceiptModel]
+    let receipts: [ReceiptModel]
     @Binding var deferNextTotalAnimation: Bool
     let totalAnimationReleaseToken: Int
     let displayedTotal: Double
@@ -311,37 +311,102 @@ private struct ReceiptDetailView: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 14) {
-                Text(receipt.storeName)
-                    .font(.system(size: 28, weight: .bold, design: .rounded))
+            VStack(alignment: .leading, spacing: 0) {
+                VStack(alignment: .leading, spacing: 14) {
+                    HStack(spacing: 12) {
+                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            .fill(AppColors.accent)
+                            .frame(width: 56, height: 56)
+                            .overlay(Image(systemName: "storefront").font(.system(size: 24)).foregroundStyle(AppColors.primary))
 
-                Text(receipt.storeAddress)
-                    .font(.system(size: 13))
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(receipt.storeName)
+                                .font(.system(size: 22, weight: .bold, design: .rounded))
+                            Text(displayReceiptCode)
+                                .font(.system(size: 13, weight: .medium, design: .monospaced))
+                                .foregroundStyle(AppColors.muted)
+                        }
+                    }
+
+                    HStack(spacing: 24) {
+                        Label(formattedDate(receipt.purchaseDate), systemImage: "calendar")
+                        Label(receipt.paymentMethod.capitalized, systemImage: "creditcard")
+                    }
+                    .font(.system(size: 13, weight: .medium))
                     .foregroundStyle(AppColors.muted)
 
+                    Label(receipt.storeAddress, systemImage: "location")
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(AppColors.muted)
+                }
+                .padding(20)
+
                 Divider()
 
-                ForEach(receipt.items) { item in
-                    HStack {
-                        Text(item.name)
-                        Spacer()
-                        Text("$\(item.total, specifier: "%.2f")")
-                            .fontWeight(.medium)
+                VStack(alignment: .leading, spacing: 14) {
+                    Label("ITEMS", systemImage: "list.bullet.rectangle")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(AppColors.muted)
+
+                    VStack(spacing: 14) {
+                        ForEach(receipt.items) { item in
+                            HStack(alignment: .top) {
+                                VStack(alignment: .leading, spacing: 3) {
+                                    Text(item.name)
+                                        .font(.system(size: 18, weight: .semibold))
+                                    if item.quantity > 1 {
+                                        Text("\(item.quantity) × $\(item.unitPrice, specifier: "%.2f")")
+                                            .font(.system(size: 12, weight: .medium))
+                                            .foregroundStyle(AppColors.muted)
+                                    }
+                                }
+                                Spacer()
+                                Text("$\(item.total, specifier: "%.2f")")
+                                    .font(.system(size: 18, weight: .semibold))
+                            }
+                        }
                     }
                 }
+                .padding(20)
 
                 Divider()
 
-                HStack {
-                    Text("Total")
-                        .font(.title3.bold())
-                    Spacer()
-                    Text("$\(receipt.total, specifier: "%.2f")")
-                        .font(.title3.bold())
+                VStack(spacing: 10) {
+                    HStack {
+                        Text("Subtotal")
+                            .foregroundStyle(AppColors.muted)
+                        Spacer()
+                        Text("$\(subtotal, specifier: "%.2f")")
+                            .foregroundStyle(AppColors.muted)
+                    }
+
+                    HStack {
+                        Text("Tax")
+                            .foregroundStyle(AppColors.muted)
+                        Spacer()
+                        Text("$\(tax, specifier: "%.2f")")
+                            .foregroundStyle(AppColors.muted)
+                    }
+
+                    Divider()
+
+                    HStack {
+                        Text("Total")
+                            .font(.system(size: 34, weight: .bold))
+                        Spacer()
+                        Text("$\(receipt.total, specifier: "%.2f")")
+                            .font(.system(size: 34, weight: .bold))
+                    }
                 }
+                .font(.system(size: 16, weight: .medium))
+                .padding(20)
             }
-            .padding(18)
-            .glassCard()
+            .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 26, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 26, style: .continuous)
+                    .stroke(Color.white.opacity(0.35), lineWidth: 1)
+            )
+            .shadow(color: .black.opacity(0.05), radius: 12, x: 0, y: 4)
             .padding()
         }
         .background(AppColors.bg.ignoresSafeArea())
@@ -349,6 +414,24 @@ private struct ReceiptDetailView: View {
         .onDisappear {
             onClose()
         }
+    }
+
+    private var subtotal: Double {
+        receipt.items.reduce(0) { $0 + $1.total }
+    }
+
+    private var tax: Double {
+        max(0, receipt.total - subtotal)
+    }
+
+    private var displayReceiptCode: String {
+        "RCP-\(receipt.id.uuidString.prefix(8).uppercased())"
+    }
+
+    private func formattedDate(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "MMM d, yyyy · h:mm a"
+        return formatter.string(from: date)
     }
 }
 

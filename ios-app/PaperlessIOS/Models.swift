@@ -1,22 +1,47 @@
 import Foundation
 
-struct ReceiptItem: Identifiable, Hashable {
-    let id = UUID()
+struct ReceiptItem: Identifiable, Hashable, Codable {
+    let id: UUID
     let name: String
     let quantity: Int
     let unitPrice: Double
 
     var total: Double { Double(quantity) * unitPrice }
+
+    init(id: UUID = UUID(), name: String, quantity: Int, unitPrice: Double) {
+        self.id = id
+        self.name = name
+        self.quantity = quantity
+        self.unitPrice = unitPrice
+    }
 }
 
-struct ReceiptModel: Identifiable, Hashable {
-    let id = UUID()
+struct ReceiptModel: Identifiable, Hashable, Codable {
+    let id: UUID
     let storeName: String
     let total: Double
     let paymentMethod: String
     let purchaseDate: Date
     let items: [ReceiptItem]
     let storeAddress: String
+
+    init(
+        id: UUID = UUID(),
+        storeName: String,
+        total: Double,
+        paymentMethod: String,
+        purchaseDate: Date,
+        items: [ReceiptItem],
+        storeAddress: String
+    ) {
+        self.id = id
+        self.storeName = storeName
+        self.total = total
+        self.paymentMethod = paymentMethod
+        self.purchaseDate = purchaseDate
+        self.items = items
+        self.storeAddress = storeAddress
+    }
 }
 
 private struct QRReceiptItemPayload: Decodable {
