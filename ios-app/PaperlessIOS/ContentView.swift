@@ -1,5 +1,6 @@
 import SwiftUI
 import AVFoundation
+import PhotosUI
 
 private enum AppTab: Hashable {
     case receipts
@@ -17,6 +18,7 @@ struct ContentView: View {
     @State private var hasInitializedDisplayedTotal = false
     @State private var pendingTotalAfterDetail: Double?
     @State private var totalAnimationTask: Task<Void, Never>?
+    @StateObject private var profileStore = ProfileStore()
 
     var body: some View {
         NavigationStack {
@@ -51,7 +53,7 @@ struct ContentView: View {
                             }
                         }
                     case .profile:
-                        ProfileView()
+                        ProfileView(profileStore: profileStore)
                     }
                 }
                 .padding(.bottom, 90)
@@ -690,17 +692,136 @@ private struct ScannerCornerGuides: Shape {
 }
 
 private struct ProfileView: View {
+    @ObservedObject var profileStore: ProfileStore
+    @State private var selectedPhoto: PhotosPickerItem?
+    @FocusState private var isNameFieldFocused: Bool
+
     var body: some View {
-        VStack(spacing: 14) {
-            Text("Profile")
-                .font(.system(size: 30, weight: .bold, design: .rounded))
-            Text("Clean, simple, and App Store-ready foundation.")
-                .foregroundStyle(AppColors.muted)
-                .multilineTextAlignment(.center)
+        ScrollView {
+            VStack(alignment: .leading, spacing: 16) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("YOUR PROFILE")
+                        .font(.system(size: 12, weight: .semibold))
+                        .tracking(1.1)
+                        .foregroundStyle(AppColors.muted)
+                    Text("Settings")
+                        .font(.system(size: 32, weight: .bold, design: .rounded))
+                        .foregroundStyle(AppColors.text)
+                }
+                .padding(.top, 8)
+
+                VStack(spacing: 14) {
+                    HStack(spacing: 14) {
+                        PhotosPicker(selection: $selectedPhoto, matching: .images, photoLibrary: .shared()) {
+                            profileAvatar
+                        }
+
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text(profileStore.displayName.isEmpty ? "Your name" : profileStore.displayName)
+                                .font(.system(size: 20, weight: .bold, design: .rounded))
+                        }
+                        Spacer()
+                    }
+                }
+                .padding(18)
+                .glassCard()
+
+                VStack(alignment: .leading, spacing: 14) {
+                    Text("PERSONAL")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(AppColors.muted)
+
+                    VStack(spacing: 12) {
+                        HStack(spacing: 12) {
+                            Image(systemName: "person")
+                                .font(.system(size: 15, weight: .semibold))
+                                .foregroundStyle(AppColors.primary)
+                                .frame(width: 28, height: 28)
+                                .background(AppColors.accent.opacity(0.65), in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+
+                            TextField("Your name", text: $profileStore.displayName)
+                                .textInputAutocapitalization(.words)
+                                .font(.system(size: 15, weight: .semibold))
+                                .focused($isNameFieldFocused)
+                        }
+
+                        settingsRow(icon: "dollarsign.circle", title: "Currency") {
+                            Picker("Currency", selection: $profileStore.currencyCode) {
+                                ForEach(ProfileStore.supportedCurrencies, id: \.self) { currency in
+                                    Text(currency).tag(currency)
+                                }
+                            }
+                            .pickerStyle(.menu)
+                        }
+
+                        settingsRow(icon: "bell", title: "Notifications") {
+                            Toggle("", isOn: $profileStore.notificationsEnabled)
+                                .labelsHidden()
+                        }
+                    }
+                }
+                .padding(18)
+                .glassCard()
+            }
+            .padding(.horizontal, 18)
+            .padding(.bottom, 110)
         }
-        .padding(24)
-        .glassCard()
-        .padding()
+        .scrollIndicators(.hidden)
+        .scrollDismissesKeyboard(.interactively)
+        .ignoresSafeArea(.keyboard, edges: .bottom)
+        .simultaneousGesture(
+            TapGesture().onEnded {
+                isNameFieldFocused = false
+            }
+        )
+        .onChange(of: selectedPhoto) { _, newPhoto in
+            guard let newPhoto else { return }
+            Task {
+                if let data = try? await newPhoto.loadTransferable(type: Data.self) {
+                    await MainActor.run {
+                        profileStore.setProfileImage(data)
+                    }
+                }
+            }
+        }
+    }
+
+    private var profileAvatar: some View {
+        Group {
+            if let image = profileStore.profileImage {
+                Image(uiImage: image)
+                    .resizable()
+                    .scaledToFill()
+            } else {
+                Text(profileStore.initials)
+                    .font(.system(size: 24, weight: .bold))
+                    .foregroundStyle(AppColors.primary)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .background(AppColors.accent)
+            }
+        }
+        .frame(width: 74, height: 74)
+        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .stroke(Color.white.opacity(0.45), lineWidth: 1)
+        )
+    }
+
+    private func settingsRow<Content: View>(icon: String, title: String, @ViewBuilder trailing: () -> Content) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: icon)
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(AppColors.primary)
+                .frame(width: 28, height: 28)
+                .background(AppColors.accent.opacity(0.65), in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+
+            Text(title)
+                .font(.system(size: 15, weight: .semibold))
+
+            Spacer()
+            trailing()
+        }
     }
 }
 

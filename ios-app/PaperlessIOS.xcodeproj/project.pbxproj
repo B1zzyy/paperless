@@ -17,6 +17,7 @@
 		A00100080000000000000001 /* Preview Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A00110080000000000000001 /* Preview Assets.xcassets */; };
 		A00100090000000000000001 /* CameraQRScannerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00110090000000000000001 /* CameraQRScannerView.swift */; };
 		A00100100000000000000001 /* ReceiptStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00110100000000000000001 /* ReceiptStore.swift */; };
+		A00100110000000000000001 /* ProfileStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00110110000000000000001 /* ProfileStore.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -31,6 +32,7 @@
 		A00110080000000000000001 /* Preview Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = "Preview Assets.xcassets"; sourceTree = "<group>"; };
 		A00110090000000000000001 /* CameraQRScannerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CameraQRScannerView.swift; sourceTree = "<group>"; };
 		A00110100000000000000001 /* ReceiptStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReceiptStore.swift; sourceTree = "<group>"; };
+		A00110110000000000000001 /* ProfileStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfileStore.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -63,6 +65,7 @@
 				A00110060000000000000001 /* MockData.swift */,
 				A00110090000000000000001 /* CameraQRScannerView.swift */,
 				A00110100000000000000001 /* ReceiptStore.swift */,
+				A00110110000000000000001 /* ProfileStore.swift */,
 				A00110070000000000000001 /* Assets.xcassets */,
 				A00130030000000000000001 /* Preview Content */,
 			);
@@ -162,6 +165,7 @@
 				A00100060000000000000001 /* MockData.swift in Sources */,
 				A00100090000000000000001 /* CameraQRScannerView.swift in Sources */,
 				A00100100000000000000001 /* ReceiptStore.swift in Sources */,
+				A00100110000000000000001 /* ProfileStore.swift in Sources */,
 				A00100010000000000000001 /* PaperlessIOSApp.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
