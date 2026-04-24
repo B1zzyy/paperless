@@ -577,44 +577,46 @@ private struct ScanView: View {
 
                 Spacer(minLength: 8)
 
-                Button {
-                    if isSimulator {
-                        let demoPayload = """
-                        {
-                          "store_name":"Simulator FreshMart",
-                          "store_address":"123 Main St, San Francisco, CA",
-                          "purchase_date":"\(ISO8601DateFormatter().string(from: Date()))",
-                          "items":[{"name":"Whole Milk 2L","quantity":1,"unit_price":2.49},{"name":"Sourdough Bread","quantity":1,"unit_price":3.99}],
-                          "subtotal":6.48,
-                          "tax":0.52,
-                          "total":7.00,
-                          "payment_method":"credit_card",
-                          "receipt_id":"SIM-\(Int(Date().timeIntervalSince1970))"
+                if isSimulator || cameraStatus != .authorized {
+                    Button {
+                        if isSimulator {
+                            let demoPayload = """
+                            {
+                              "store_name":"Simulator FreshMart",
+                              "store_address":"123 Main St, San Francisco, CA",
+                              "purchase_date":"\(ISO8601DateFormatter().string(from: Date()))",
+                              "items":[{"name":"Whole Milk 2L","quantity":1,"unit_price":2.49},{"name":"Sourdough Bread","quantity":1,"unit_price":3.99}],
+                              "subtotal":6.48,
+                              "tax":0.52,
+                              "total":7.00,
+                              "payment_method":"credit_card",
+                              "receipt_id":"SIM-\(Int(Date().timeIntervalSince1970))"
+                            }
+                            """
+                            do {
+                                scanLinePhase = false
+                                let receipt = try ReceiptModel.fromQRCode(demoPayload)
+                                onReceiptScanned(receipt)
+                            } catch {
+                                scanAlertTitle = "Invalid QR"
+                                scannedValue = error.localizedDescription
+                                showScanAlert = true
+                            }
+                        } else {
+                            requestCameraAccess()
                         }
-                        """
-                        do {
-                            scanLinePhase = false
-                            let receipt = try ReceiptModel.fromQRCode(demoPayload)
-                            onReceiptScanned(receipt)
-                        } catch {
-                            scanAlertTitle = "Invalid QR"
-                            scannedValue = error.localizedDescription
-                            showScanAlert = true
-                        }
-                    } else {
-                        requestCameraAccess()
+                    } label: {
+                        Text(isSimulator ? "Simulate QR Scan" : "Enable Camera")
+                            .font(.system(size: 16, weight: .semibold))
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 52)
                     }
-                } label: {
-                    Text(isSimulator ? "Simulate QR Scan" : (cameraStatus == .authorized ? "Camera Ready" : "Enable Camera"))
-                        .font(.system(size: 16, weight: .semibold))
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 52)
+                    .buttonStyle(.borderedProminent)
+                    .tint(AppColors.primary)
+                    .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
                 }
-                .buttonStyle(.borderedProminent)
-                .tint(AppColors.primary)
-                .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-                .disabled(!isSimulator && cameraStatus == .authorized)
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
             .padding(18)
         }
         .onAppear {
