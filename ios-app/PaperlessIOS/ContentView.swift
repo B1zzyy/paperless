@@ -311,10 +311,36 @@ private struct ReceiptRow: View {
 private struct ReceiptDetailView: View {
     let receipt: ReceiptModel
     let onClose: () -> Void
+    @Environment(\.dismiss) private var dismiss
+    private static let receiptDateFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "MMM d, yyyy · h:mm a"
+        return formatter
+    }()
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 0) {
+            VStack(alignment: .leading, spacing: 14) {
+                HStack {
+                    Button {
+                        dismiss()
+                    } label: {
+                        Image(systemName: "chevron.left")
+                            .font(.system(size: 16, weight: .semibold))
+                            .foregroundStyle(AppColors.text)
+                            .frame(width: 34, height: 34)
+                            .background(Color.white.opacity(0.65), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    }
+                    Spacer()
+                    Text("Receipt")
+                        .font(.system(size: 17, weight: .semibold))
+                    Spacer()
+                    Color.clear
+                        .frame(width: 34, height: 34)
+                }
+                .padding(.horizontal, 2)
+
+                VStack(alignment: .leading, spacing: 0) {
                 VStack(alignment: .leading, spacing: 14) {
                     HStack(spacing: 12) {
                         RoundedRectangle(cornerRadius: 14, style: .continuous)
@@ -404,16 +430,17 @@ private struct ReceiptDetailView: View {
                 .font(.system(size: 16, weight: .medium))
                 .padding(20)
             }
-            .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 26, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: 26, style: .continuous)
-                    .stroke(Color.white.opacity(0.35), lineWidth: 1)
-            )
-            .shadow(color: .black.opacity(0.05), radius: 12, x: 0, y: 4)
+                .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 26, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 26, style: .continuous)
+                        .stroke(Color.white.opacity(0.35), lineWidth: 1)
+                )
+                .shadow(color: .black.opacity(0.05), radius: 12, x: 0, y: 4)
+            }
             .padding()
         }
         .background(AppColors.bg.ignoresSafeArea())
-        .navigationTitle("Receipt")
+        .toolbar(.hidden, for: .navigationBar)
         .onDisappear {
             onClose()
         }
@@ -432,9 +459,7 @@ private struct ReceiptDetailView: View {
     }
 
     private func formattedDate(_ date: Date) -> String {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "MMM d, yyyy · h:mm a"
-        return formatter.string(from: date)
+        Self.receiptDateFormatter.string(from: date)
     }
 }
 
