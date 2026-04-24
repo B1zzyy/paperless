@@ -297,10 +297,13 @@ private struct ReceiptRow: View {
             }
         }
         .padding(12)
-        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .background(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(AppColors.accent.opacity(0.35))
+        )
         .overlay(
             RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .stroke(Color.white.opacity(0.28), lineWidth: 0.6)
+                .stroke(AppColors.primary.opacity(0.10), lineWidth: 0.8)
         )
     }
 }
