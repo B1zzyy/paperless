@@ -12,6 +12,11 @@ struct ContentView: View {
     @State private var selectedReceipt: ReceiptModel?
     @State private var receipts = MockData.receipts
     @State private var deferNextTotalAnimation = false
+    @State private var totalAnimationReleaseToken = 0
+    @State private var displayedTotal = 0.0
+    @State private var hasInitializedDisplayedTotal = false
+    @State private var pendingTotalAfterDetail: Double?
+    @State private var totalAnimationTask: Task<Void, Never>?
 
     var body: some View {
         NavigationStack {
@@ -31,7 +36,9 @@ struct ContentView: View {
                         ReceiptsView(
                             selectedReceipt: $selectedReceipt,
                             receipts: $receipts,
-                            deferNextTotalAnimation: $deferNextTotalAnimation
+                            deferNextTotalAnimation: $deferNextTotalAnimation,
+                            totalAnimationReleaseToken: totalAnimationReleaseToken,
+                            displayedTotal: displayedTotal
                         )
                     case .scan:
                         ScanView { scannedReceipt in
@@ -55,12 +62,63 @@ struct ContentView: View {
                     .padding(.bottom, 8)
             }
             .navigationDestination(item: $selectedReceipt) { receipt in
-                ReceiptDetailView(receipt: receipt)
+                ReceiptDetailView(receipt: receipt) {
+                    selectedReceipt = nil
+                    if deferNextTotalAnimation {
+                        totalAnimationReleaseToken += 1
+                    }
+                }
             }
             .navigationBarTitleDisplayMode(.inline)
             .onAppear {
                 Haptics.prepare()
+                if !hasInitializedDisplayedTotal {
+                    displayedTotal = totalSpent
+                    hasInitializedDisplayedTotal = true
+                }
             }
+            .onChange(of: totalSpent) { _, newValue in
+                if deferNextTotalAnimation || selectedReceipt != nil {
+                    pendingTotalAfterDetail = newValue
+                } else {
+                    animateTotal(to: newValue)
+                }
+            }
+            .onChange(of: totalAnimationReleaseToken) { _, _ in
+                guard let pending = pendingTotalAfterDetail else { return }
+                pendingTotalAfterDetail = nil
+                deferNextTotalAnimation = false
+                animateTotal(to: pending)
+            }
+        }
+    }
+
+    private var totalSpent: Double { receipts.reduce(0) { $0 + $1.total } }
+
+    private func animateTotal(to newValue: Double) {
+        totalAnimationTask?.cancel()
+        let start = displayedTotal
+        let delta = newValue - start
+        guard abs(delta) > 0.001 else {
+            displayedTotal = newValue
+            return
+        }
+
+        Haptics.light()
+        totalAnimationTask = Task { @MainActor in
+            let steps = 30
+            for step in 1...steps {
+                if Task.isCancelled { return }
+                let t = Double(step) / Double(steps)
+                let eased = 1 - pow(1 - t, 3) // fast start, slow finish
+                displayedTotal = start + (delta * eased)
+                if step % 6 == 0 {
+                    Haptics.light()
+                }
+                try? await Task.sleep(nanoseconds: 18_000_000)
+            }
+            displayedTotal = newValue
+            Haptics.medium()
         }
     }
 
@@ -131,13 +189,10 @@ private struct ReceiptsView: View {
     @Binding var selectedReceipt: ReceiptModel?
     @Binding var receipts: [ReceiptModel]
     @Binding var deferNextTotalAnimation: Bool
+    let totalAnimationReleaseToken: Int
+    let displayedTotal: Double
     @State private var showAll = false
-    @State private var displayedTotal = 0.0
-    @State private var totalAnimationTask: Task<Void, Never>?
-    @State private var pendingTotalAfterDetail: Double?
-    @State private var hasInitializedTotal = false
 
-    private var totalSpent: Double { receipts.reduce(0) { $0 + $1.total } }
     private var visibleReceipts: [ReceiptModel] { showAll ? receipts : Array(receipts.prefix(3)) }
 
     var body: some View {
@@ -214,55 +269,6 @@ private struct ReceiptsView: View {
             .padding(.top, 20)
         }
         .scrollIndicators(.hidden)
-        .onAppear {
-            if !hasInitializedTotal {
-                displayedTotal = totalSpent
-                hasInitializedTotal = true
-            }
-        }
-        .onChange(of: totalSpent) { _, newValue in
-            // Defer count-up until user returns from receipt detail after a scan success.
-            if deferNextTotalAnimation || selectedReceipt != nil {
-                pendingTotalAfterDetail = newValue
-            } else {
-                animateTotal(to: newValue)
-            }
-        }
-        .onChange(of: selectedReceipt) { _, newValue in
-            guard newValue == nil, let pending = pendingTotalAfterDetail else { return }
-            pendingTotalAfterDetail = nil
-            deferNextTotalAnimation = false
-            animateTotal(to: pending)
-        }
-    }
-
-    private func animateTotal(to newValue: Double) {
-        totalAnimationTask?.cancel()
-        let start = displayedTotal
-        let delta = newValue - start
-        guard abs(delta) > 0.001 else {
-            displayedTotal = newValue
-            return
-        }
-
-        Haptics.light()
-        totalAnimationTask = Task { @MainActor in
-            let steps = 30
-            for step in 1...steps {
-                if Task.isCancelled { return }
-                let t = Double(step) / Double(steps)
-                // Fast at start, slows near end (measure-tape unfold feel).
-                let eased = 1 - pow(1 - t, 3)
-                displayedTotal = start + (delta * eased)
-
-                if step % 6 == 0 {
-                    Haptics.light()
-                }
-                try? await Task.sleep(nanoseconds: 18_000_000) // 18ms
-            }
-            displayedTotal = newValue
-            Haptics.medium()
-        }
     }
 }
 
@@ -301,6 +307,7 @@ private struct ReceiptRow: View {
 
 private struct ReceiptDetailView: View {
     let receipt: ReceiptModel
+    let onClose: () -> Void
 
     var body: some View {
         ScrollView {
@@ -339,6 +346,9 @@ private struct ReceiptDetailView: View {
         }
         .background(AppColors.bg.ignoresSafeArea())
         .navigationTitle("Receipt")
+        .onDisappear {
+            onClose()
+        }
     }
 }
 
