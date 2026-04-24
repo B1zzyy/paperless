@@ -1,0 +1,585 @@
+import SwiftUI
+import AVFoundation
+
+private enum AppTab: Hashable {
+    case receipts
+    case scan
+    case profile
+}
+
+struct ContentView: View {
+    @State private var selectedTab: AppTab = .receipts
+    @State private var selectedReceipt: ReceiptModel?
+    @State private var receipts = MockData.receipts
+    @State private var deferNextTotalAnimation = false
+
+    var body: some View {
+        NavigationStack {
+            ZStack(alignment: .bottom) {
+                AppColors.bg
+                    .ignoresSafeArea()
+
+                Circle()
+                    .fill(AppColors.primary.opacity(0.10))
+                    .frame(width: 340, height: 340)
+                    .offset(x: -120, y: -310)
+                    .allowsHitTesting(false)
+
+                Group {
+                    switch selectedTab {
+                    case .receipts:
+                        ReceiptsView(
+                            selectedReceipt: $selectedReceipt,
+                            receipts: $receipts,
+                            deferNextTotalAnimation: $deferNextTotalAnimation
+                        )
+                    case .scan:
+                        ScanView { scannedReceipt in
+                            deferNextTotalAnimation = true
+                            receipts.insert(scannedReceipt, at: 0)
+                            selectedTab = .receipts
+                            DispatchQueue.main.async {
+                                Haptics.success()
+                                selectedReceipt = scannedReceipt
+                            }
+                        }
+                    case .profile:
+                        ProfileView()
+                    }
+                }
+                .padding(.bottom, 90)
+
+                tabBar
+                    .frame(maxWidth: 420)
+                    .padding(.horizontal, 30)
+                    .padding(.bottom, 8)
+            }
+            .navigationDestination(item: $selectedReceipt) { receipt in
+                ReceiptDetailView(receipt: receipt)
+            }
+            .navigationBarTitleDisplayMode(.inline)
+            .onAppear {
+                Haptics.prepare()
+            }
+        }
+    }
+
+    private var tabBar: some View {
+        GeometryReader { proxy in
+            let contentWidth = proxy.size.width - 16 // horizontal padding inside bar
+            let slotWidth = contentWidth / 3
+            let activeX = CGFloat(activeTabIndex) * slotWidth + 8
+
+            ZStack(alignment: .leading) {
+                Capsule(style: .continuous)
+                    .fill(Color.clear)
+                    .liquidCapsule(tint: .white.opacity(0.08))
+
+                Capsule(style: .continuous)
+                    .fill(Color.clear)
+                    .liquidCapsule(tint: AppColors.primary.opacity(0.08), interactive: false)
+                    .frame(width: slotWidth, height: 54)
+                    .offset(x: activeX, y: 0)
+                    .allowsHitTesting(false)
+
+                HStack(spacing: 6) {
+                    tabButton(icon: "doc.text", title: "Receipts", tab: .receipts)
+                    tabButton(icon: "qrcode.viewfinder", title: "Scan", tab: .scan)
+                    tabButton(icon: "person.crop.circle", title: "Profile", tab: .profile)
+                }
+                .padding(.vertical, 8)
+                .padding(.horizontal, 8)
+            }
+            .animation(.easeOut(duration: 0.20), value: selectedTab)
+        }
+        .frame(height: 78)
+    }
+
+    private var activeTabIndex: Int {
+        switch selectedTab {
+        case .receipts: return 0
+        case .scan: return 1
+        case .profile: return 2
+        }
+    }
+
+    private func tabButton(icon: String, title: String, tab: AppTab) -> some View {
+        let active = selectedTab == tab
+        return Button {
+            withAnimation(.easeOut(duration: 0.20)) {
+                selectedTab = tab
+            }
+            Haptics.light()
+        } label: {
+            VStack(spacing: 3) {
+                Image(systemName: icon)
+                    .font(.system(size: 18, weight: .semibold))
+                Text(title)
+                    .font(.system(size: 11, weight: .medium))
+            }
+            .padding(.vertical, 10)
+            .foregroundStyle(active ? AppColors.primary : AppColors.muted.opacity(0.9))
+            .frame(maxWidth: .infinity)
+            .frame(height: 54)
+            .contentShape(Capsule(style: .continuous))
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+private struct ReceiptsView: View {
+    @Binding var selectedReceipt: ReceiptModel?
+    @Binding var receipts: [ReceiptModel]
+    @Binding var deferNextTotalAnimation: Bool
+    @State private var showAll = false
+    @State private var displayedTotal = 0.0
+    @State private var totalAnimationTask: Task<Void, Never>?
+    @State private var pendingTotalAfterDetail: Double?
+    @State private var hasInitializedTotal = false
+
+    private var totalSpent: Double { receipts.reduce(0) { $0 + $1.total } }
+    private var visibleReceipts: [ReceiptModel] { showAll ? receipts : Array(receipts.prefix(3)) }
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 16) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("YOUR RECEIPTS")
+                        .font(.system(size: 12, weight: .semibold))
+                        .tracking(1.1)
+                        .foregroundStyle(AppColors.muted)
+                    Text("Expenses")
+                        .font(.system(size: 32, weight: .bold, design: .rounded))
+                        .foregroundStyle(AppColors.text)
+                }
+                .padding(.top, 8)
+
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("TOTAL SPENT")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(.white.opacity(0.82))
+                    Text("$\(displayedTotal, specifier: "%.2f")")
+                        .font(.system(size: 34, weight: .bold, design: .rounded))
+                        .foregroundStyle(.white)
+                        .contentTransition(.numericText())
+                    Text("\(receipts.count) receipts saved")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(.white.opacity(0.72))
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(20)
+                .background(
+                    LinearGradient(colors: [AppColors.primary, AppColors.primary.opacity(0.74)],
+                                   startPoint: .topLeading,
+                                   endPoint: .bottomTrailing)
+                )
+                .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+                .shadow(color: AppColors.primary.opacity(0.3), radius: 12, x: 0, y: 8)
+
+                VStack(spacing: 0) {
+                    LazyVStack(spacing: 10) {
+                        ForEach(visibleReceipts) { receipt in
+                            ReceiptRow(receipt: receipt)
+                                .onTapGesture {
+                                    selectedReceipt = receipt
+                                    Haptics.medium()
+                                }
+                        }
+                    }
+                    .padding(12)
+
+                    if receipts.count > 3 {
+                        Button {
+                            withAnimation(.easeInOut(duration: 0.2)) {
+                                showAll.toggle()
+                            }
+                            Haptics.light()
+                        } label: {
+                            HStack(spacing: 6) {
+                                Text(showAll ? "Show less" : "View all")
+                                Text(showAll ? "↑" : "↓")
+                            }
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(AppColors.primary)
+                            .frame(maxWidth: .infinity)
+                            .padding(.top, 10)
+                            .padding(.bottom, 10)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .glassCard()
+            }
+            .padding(.horizontal, 18)
+            .padding(.top, 20)
+        }
+        .scrollIndicators(.hidden)
+        .onAppear {
+            if !hasInitializedTotal {
+                displayedTotal = totalSpent
+                hasInitializedTotal = true
+            }
+        }
+        .onChange(of: totalSpent) { _, newValue in
+            // Defer count-up until user returns from receipt detail after a scan success.
+            if deferNextTotalAnimation || selectedReceipt != nil {
+                pendingTotalAfterDetail = newValue
+            } else {
+                animateTotal(to: newValue)
+            }
+        }
+        .onChange(of: selectedReceipt) { _, newValue in
+            guard newValue == nil, let pending = pendingTotalAfterDetail else { return }
+            pendingTotalAfterDetail = nil
+            deferNextTotalAnimation = false
+            animateTotal(to: pending)
+        }
+    }
+
+    private func animateTotal(to newValue: Double) {
+        totalAnimationTask?.cancel()
+        let start = displayedTotal
+        let delta = newValue - start
+        guard abs(delta) > 0.001 else {
+            displayedTotal = newValue
+            return
+        }
+
+        Haptics.light()
+        totalAnimationTask = Task { @MainActor in
+            let steps = 30
+            for step in 1...steps {
+                if Task.isCancelled { return }
+                let t = Double(step) / Double(steps)
+                // Fast at start, slows near end (measure-tape unfold feel).
+                let eased = 1 - pow(1 - t, 3)
+                displayedTotal = start + (delta * eased)
+
+                if step % 6 == 0 {
+                    Haptics.light()
+                }
+                try? await Task.sleep(nanoseconds: 18_000_000) // 18ms
+            }
+            displayedTotal = newValue
+            Haptics.medium()
+        }
+    }
+}
+
+private struct ReceiptRow: View {
+    let receipt: ReceiptModel
+
+    var body: some View {
+        HStack(spacing: 12) {
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .fill(AppColors.accent)
+                .frame(width: 44, height: 44)
+                .overlay(Image(systemName: "storefront").foregroundStyle(AppColors.primary))
+
+            VStack(alignment: .leading, spacing: 4) {
+                HStack {
+                    Text(receipt.storeName)
+                        .font(.system(size: 15, weight: .semibold))
+                        .lineLimit(1)
+                    Spacer()
+                    Text("$\(receipt.total, specifier: "%.2f")")
+                        .font(.system(size: 15, weight: .semibold))
+                }
+                Text("\(receipt.items.count) items · \(receipt.paymentMethod)")
+                    .font(.system(size: 12))
+                    .foregroundStyle(AppColors.muted)
+            }
+        }
+        .padding(12)
+        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .stroke(Color.white.opacity(0.28), lineWidth: 0.6)
+        )
+    }
+}
+
+private struct ReceiptDetailView: View {
+    let receipt: ReceiptModel
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 14) {
+                Text(receipt.storeName)
+                    .font(.system(size: 28, weight: .bold, design: .rounded))
+
+                Text(receipt.storeAddress)
+                    .font(.system(size: 13))
+                    .foregroundStyle(AppColors.muted)
+
+                Divider()
+
+                ForEach(receipt.items) { item in
+                    HStack {
+                        Text(item.name)
+                        Spacer()
+                        Text("$\(item.total, specifier: "%.2f")")
+                            .fontWeight(.medium)
+                    }
+                }
+
+                Divider()
+
+                HStack {
+                    Text("Total")
+                        .font(.title3.bold())
+                    Spacer()
+                    Text("$\(receipt.total, specifier: "%.2f")")
+                        .font(.title3.bold())
+                }
+            }
+            .padding(18)
+            .glassCard()
+            .padding()
+        }
+        .background(AppColors.bg.ignoresSafeArea())
+        .navigationTitle("Receipt")
+    }
+}
+
+private struct ScanView: View {
+    let onReceiptScanned: (ReceiptModel) -> Void
+    @State private var cameraStatus: AVAuthorizationStatus = AVCaptureDevice.authorizationStatus(for: .video)
+    @State private var scannedValue = ""
+    @State private var showScanAlert = false
+    @State private var scanAlertTitle = "QR Scanned"
+    @State private var isProcessingScan = false
+    @State private var scanLinePhase = false
+    #if targetEnvironment(simulator)
+    private let isSimulator = true
+    #else
+    private let isSimulator = false
+    #endif
+
+    var body: some View {
+        GeometryReader { proxy in
+            let side = min(proxy.size.width - 36, 360)
+            VStack(spacing: 18) {
+                Text("Digital Receipt")
+                    .font(.system(size: 12, weight: .semibold))
+                    .tracking(1.0)
+                    .foregroundStyle(AppColors.muted)
+                Text("Scan QR")
+                    .font(.system(size: 32, weight: .bold, design: .rounded))
+
+                Spacer(minLength: 8)
+
+                ZStack {
+                    RoundedRectangle(cornerRadius: 26, style: .continuous)
+                        .fill(.thinMaterial)
+
+                    if isSimulator {
+                        VStack(spacing: 10) {
+                            Image(systemName: "iphone.gen3.radiowaves.left.and.right")
+                                .font(.system(size: 34, weight: .semibold))
+                                .foregroundStyle(AppColors.primary)
+                            Text("Simulator Camera Not Supported")
+                                .font(.system(size: 15, weight: .semibold))
+                            Text("Run on your iPhone for live camera QR scanning.")
+                                .font(.system(size: 12))
+                                .foregroundStyle(AppColors.muted)
+                                .multilineTextAlignment(.center)
+                                .padding(.horizontal, 18)
+                        }
+                    } else if cameraStatus == .authorized {
+                        CameraQRScannerView { value in
+                            guard !isProcessingScan else { return }
+                            isProcessingScan = true
+                            scanLinePhase = false
+                            defer {
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
+                                    isProcessingScan = false
+                                }
+                            }
+
+                            do {
+                                let receipt = try ReceiptModel.fromQRCode(value)
+                                onReceiptScanned(receipt)
+                            } catch {
+                                scanAlertTitle = "Invalid QR"
+                                scannedValue = error.localizedDescription
+                                showScanAlert = true
+                            }
+                        }
+                        .clipShape(RoundedRectangle(cornerRadius: 26, style: .continuous))
+                    } else {
+                        VStack(spacing: 10) {
+                            Image(systemName: "camera.viewfinder")
+                                .font(.system(size: 34, weight: .semibold))
+                                .foregroundStyle(AppColors.primary)
+                            Text(cameraStatus == .denied ? "Camera access denied" : "Camera access needed")
+                                .font(.system(size: 15, weight: .semibold))
+                            Text("Enable camera permission in Settings to scan QR receipts.")
+                                .font(.system(size: 12))
+                                .foregroundStyle(AppColors.muted)
+                                .multilineTextAlignment(.center)
+                                .padding(.horizontal, 18)
+                        }
+                    }
+
+                    // Corner guides
+                    RoundedRectangle(cornerRadius: 26, style: .continuous)
+                        .stroke(AppColors.primary.opacity(0.45), lineWidth: 1.2)
+
+                    ScannerCornerGuides()
+                        .stroke(
+                            AppColors.primary.opacity(0.55),
+                            style: StrokeStyle(lineWidth: 2, lineCap: .round, lineJoin: .round)
+                        )
+
+                    // Animated scan line
+                    RoundedRectangle(cornerRadius: 2, style: .continuous)
+                        .fill(
+                            LinearGradient(
+                                colors: [.clear, AppColors.primary.opacity(0.65), .clear],
+                                startPoint: .leading,
+                                endPoint: .trailing
+                            )
+                        )
+                        .frame(height: 3)
+                        .padding(.horizontal, 22)
+                        .opacity(isProcessingScan ? 0 : 1)
+                        .offset(y: scanLinePhase ? (side / 2 - 28) : -(side / 2 - 28))
+                        .animation(.easeInOut(duration: 1.6).repeatForever(autoreverses: true), value: scanLinePhase)
+                }
+                .frame(width: side, height: side)
+                .onAppear {
+                    scanLinePhase = true
+                }
+
+                Spacer(minLength: 8)
+
+                Button {
+                    if isSimulator {
+                        let demoPayload = """
+                        {
+                          "store_name":"Simulator FreshMart",
+                          "store_address":"123 Main St, San Francisco, CA",
+                          "purchase_date":"\(ISO8601DateFormatter().string(from: Date()))",
+                          "items":[{"name":"Whole Milk 2L","quantity":1,"unit_price":2.49},{"name":"Sourdough Bread","quantity":1,"unit_price":3.99}],
+                          "subtotal":6.48,
+                          "tax":0.52,
+                          "total":7.00,
+                          "payment_method":"credit_card",
+                          "receipt_id":"SIM-\(Int(Date().timeIntervalSince1970))"
+                        }
+                        """
+                        do {
+                            scanLinePhase = false
+                            let receipt = try ReceiptModel.fromQRCode(demoPayload)
+                            onReceiptScanned(receipt)
+                        } catch {
+                            scanAlertTitle = "Invalid QR"
+                            scannedValue = error.localizedDescription
+                            showScanAlert = true
+                        }
+                    } else {
+                        requestCameraAccess()
+                    }
+                } label: {
+                    Text(isSimulator ? "Simulate QR Scan" : (cameraStatus == .authorized ? "Camera Ready" : "Enable Camera"))
+                        .font(.system(size: 16, weight: .semibold))
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 52)
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(AppColors.primary)
+                .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                .disabled(!isSimulator && cameraStatus == .authorized)
+            }
+            .padding(18)
+        }
+        .onAppear {
+            if !isSimulator {
+                requestCameraAccess()
+            }
+        }
+        .alert(scanAlertTitle, isPresented: $showScanAlert) {
+            Button("OK") {}
+        } message: {
+            Text(scannedValue)
+        }
+    }
+
+    private func requestCameraAccess() {
+        let status = AVCaptureDevice.authorizationStatus(for: .video)
+        if status == .authorized || status == .denied || status == .restricted {
+            cameraStatus = status
+            return
+        }
+
+        AVCaptureDevice.requestAccess(for: .video) { granted in
+            DispatchQueue.main.async {
+                cameraStatus = granted ? .authorized : .denied
+            }
+        }
+    }
+}
+
+private struct ScannerCornerGuides: Shape {
+    func path(in rect: CGRect) -> Path {
+        let inset: CGFloat = 18
+        let length: CGFloat = 22
+        let radius: CGFloat = 6
+        var path = Path()
+
+        // Top-left
+        path.move(to: CGPoint(x: inset + length, y: inset))
+        path.addLine(to: CGPoint(x: inset + radius, y: inset))
+        path.addQuadCurve(
+            to: CGPoint(x: inset, y: inset + radius),
+            control: CGPoint(x: inset, y: inset)
+        )
+        path.addLine(to: CGPoint(x: inset, y: inset + length))
+
+        // Top-right
+        path.move(to: CGPoint(x: rect.width - inset - length, y: inset))
+        path.addLine(to: CGPoint(x: rect.width - inset - radius, y: inset))
+        path.addQuadCurve(
+            to: CGPoint(x: rect.width - inset, y: inset + radius),
+            control: CGPoint(x: rect.width - inset, y: inset)
+        )
+        path.addLine(to: CGPoint(x: rect.width - inset, y: inset + length))
+
+        // Bottom-left
+        path.move(to: CGPoint(x: inset + length, y: rect.height - inset))
+        path.addLine(to: CGPoint(x: inset + radius, y: rect.height - inset))
+        path.addQuadCurve(
+            to: CGPoint(x: inset, y: rect.height - inset - radius),
+            control: CGPoint(x: inset, y: rect.height - inset)
+        )
+        path.addLine(to: CGPoint(x: inset, y: rect.height - inset - length))
+
+        // Bottom-right
+        path.move(to: CGPoint(x: rect.width - inset - length, y: rect.height - inset))
+        path.addLine(to: CGPoint(x: rect.width - inset - radius, y: rect.height - inset))
+        path.addQuadCurve(
+            to: CGPoint(x: rect.width - inset, y: rect.height - inset - radius),
+            control: CGPoint(x: rect.width - inset, y: rect.height - inset)
+        )
+        path.addLine(to: CGPoint(x: rect.width - inset, y: rect.height - inset - length))
+
+        return path
+    }
+}
+
+private struct ProfileView: View {
+    var body: some View {
+        VStack(spacing: 14) {
+            Text("Profile")
+                .font(.system(size: 30, weight: .bold, design: .rounded))
+            Text("Clean, simple, and App Store-ready foundation.")
+                .foregroundStyle(AppColors.muted)
+                .multilineTextAlignment(.center)
+        }
+        .padding(24)
+        .glassCard()
+        .padding()
+    }
+}
+
