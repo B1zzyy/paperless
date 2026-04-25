@@ -1,6 +1,7 @@
 import SwiftUI
 import AVFoundation
 import PhotosUI
+import UIKit
 
 private enum AppTab: Hashable {
     case receipts
@@ -19,6 +20,7 @@ struct ContentView: View {
     @State private var pendingTotalAfterDetail: Double?
     @State private var totalAnimationTask: Task<Void, Never>?
     @StateObject private var profileStore = ProfileStore()
+    @State private var isCameraSettingsModalVisible = false
 
     var body: some View {
         NavigationStack {
@@ -43,25 +45,36 @@ struct ContentView: View {
                             displayedTotal: displayedTotal
                         )
                     case .scan:
-                        ScanView { scannedReceipt in
-                            deferNextTotalAnimation = true
-                            receiptStore.add(scannedReceipt)
-                            selectedTab = .receipts
-                            DispatchQueue.main.async {
-                                Haptics.success()
-                                selectedReceipt = scannedReceipt
-                            }
-                        }
+                        ScanView(
+                            onReceiptScanned: { scannedReceipt in
+                                deferNextTotalAnimation = true
+                                receiptStore.add(scannedReceipt)
+                                selectedTab = .receipts
+                                DispatchQueue.main.async {
+                                    Haptics.success()
+                                    selectedReceipt = scannedReceipt
+                                }
+                            },
+                            isCameraSettingsModalVisible: $isCameraSettingsModalVisible
+                        )
                     case .profile:
                         ProfileView(profileStore: profileStore)
                     }
                 }
                 .padding(.bottom, 90)
 
+                if isCameraSettingsModalVisible {
+                    Color.black.opacity(0.42)
+                        .ignoresSafeArea()
+                        .allowsHitTesting(false)
+                        .zIndex(40)
+                }
+
                 tabBar
                     .frame(maxWidth: 420)
                     .padding(.horizontal, 30)
                     .padding(.bottom, 8)
+                    .zIndex(50)
             }
             .navigationDestination(item: $selectedReceipt) { receipt in
                 ReceiptDetailView(receipt: receipt) {
@@ -314,6 +327,8 @@ private struct ReceiptDetailView: View {
     let receipt: ReceiptModel
     let onClose: () -> Void
     @Environment(\.dismiss) private var dismiss
+    @State private var isPrinting = false
+    @State private var printStartTask: Task<Void, Never>?
     private static let receiptDateFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.dateFormat = "MMM d, yyyy · h:mm a"
@@ -321,7 +336,7 @@ private struct ReceiptDetailView: View {
     }()
 
     var body: some View {
-        ScrollView {
+        GeometryReader { _ in
             VStack(alignment: .leading, spacing: 14) {
                 HStack {
                     Button {
@@ -342,108 +357,122 @@ private struct ReceiptDetailView: View {
                 }
                 .padding(.horizontal, 2)
 
-                VStack(alignment: .leading, spacing: 0) {
-                VStack(alignment: .leading, spacing: 14) {
-                    HStack(spacing: 12) {
-                        RoundedRectangle(cornerRadius: 14, style: .continuous)
-                            .fill(AppColors.accent)
-                            .frame(width: 56, height: 56)
-                            .overlay(Image(systemName: "storefront").font(.system(size: 24)).foregroundStyle(AppColors.primary))
+                TicketPrinterView(isPrinting: isPrinting) {
+                    VStack(alignment: .leading, spacing: 0) {
+                        VStack(alignment: .leading, spacing: 14) {
+                            HStack(spacing: 12) {
+                                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                    .fill(AppColors.accent)
+                                    .frame(width: 56, height: 56)
+                                    .overlay(Image(systemName: "storefront").font(.system(size: 24)).foregroundStyle(AppColors.primary))
 
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(receipt.storeName)
-                                .font(.system(size: 22, weight: .bold, design: .rounded))
-                            Text(displayReceiptCode)
-                                .font(.system(size: 13, weight: .medium, design: .monospaced))
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text(receipt.storeName)
+                                        .font(.system(size: 22, weight: .bold, design: .rounded))
+                                    Text(displayReceiptCode)
+                                        .font(.system(size: 13, weight: .medium, design: .monospaced))
+                                        .foregroundStyle(AppColors.muted)
+                                }
+                            }
+
+                            HStack(spacing: 24) {
+                                Label(formattedDate(receipt.purchaseDate), systemImage: "calendar")
+                                Label(receipt.paymentMethod.capitalized, systemImage: "creditcard")
+                            }
+                            .font(.system(size: 13, weight: .medium))
+                            .foregroundStyle(AppColors.muted)
+
+                            Label(receipt.storeAddress, systemImage: "location")
+                                .font(.system(size: 13, weight: .medium))
                                 .foregroundStyle(AppColors.muted)
                         }
-                    }
+                        .padding(20)
 
-                    HStack(spacing: 24) {
-                        Label(formattedDate(receipt.purchaseDate), systemImage: "calendar")
-                        Label(receipt.paymentMethod.capitalized, systemImage: "creditcard")
-                    }
-                    .font(.system(size: 13, weight: .medium))
-                    .foregroundStyle(AppColors.muted)
+                        Divider()
 
-                    Label(receipt.storeAddress, systemImage: "location")
-                        .font(.system(size: 13, weight: .medium))
-                        .foregroundStyle(AppColors.muted)
-                }
-                .padding(20)
+                        VStack(alignment: .leading, spacing: 14) {
+                            Label("ITEMS", systemImage: "list.bullet.rectangle")
+                                .font(.system(size: 13, weight: .semibold))
+                                .foregroundStyle(AppColors.muted)
 
-                Divider()
-
-                VStack(alignment: .leading, spacing: 14) {
-                    Label("ITEMS", systemImage: "list.bullet.rectangle")
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(AppColors.muted)
-
-                    VStack(spacing: 14) {
-                        ForEach(receipt.items) { item in
-                            HStack(alignment: .top) {
-                                VStack(alignment: .leading, spacing: 3) {
-                                    Text(item.name)
-                                        .font(.system(size: 18, weight: .semibold))
-                                    if item.quantity > 1 {
-                                        Text("\(item.quantity) × $\(item.unitPrice, specifier: "%.2f")")
-                                            .font(.system(size: 12, weight: .medium))
-                                            .foregroundStyle(AppColors.muted)
+                            VStack(spacing: 14) {
+                                ForEach(receipt.items) { item in
+                                    HStack(alignment: .top) {
+                                        VStack(alignment: .leading, spacing: 3) {
+                                            Text(item.name)
+                                                .font(.system(size: 18, weight: .semibold))
+                                            if item.quantity > 1 {
+                                                Text("\(item.quantity) × $\(item.unitPrice, specifier: "%.2f")")
+                                                    .font(.system(size: 12, weight: .medium))
+                                                    .foregroundStyle(AppColors.muted)
+                                            }
+                                        }
+                                        Spacer()
+                                        Text("$\(item.total, specifier: "%.2f")")
+                                            .font(.system(size: 18, weight: .semibold))
                                     }
                                 }
-                                Spacer()
-                                Text("$\(item.total, specifier: "%.2f")")
-                                    .font(.system(size: 18, weight: .semibold))
                             }
                         }
+                        .padding(20)
+
+                        Divider()
+
+                        VStack(spacing: 10) {
+                            HStack {
+                                Text("Subtotal")
+                                    .foregroundStyle(AppColors.muted)
+                                Spacer()
+                                Text("$\(subtotal, specifier: "%.2f")")
+                                    .foregroundStyle(AppColors.muted)
+                            }
+
+                            HStack {
+                                Text("Tax")
+                                    .foregroundStyle(AppColors.muted)
+                                Spacer()
+                                Text("$\(tax, specifier: "%.2f")")
+                                    .foregroundStyle(AppColors.muted)
+                            }
+
+                            Divider()
+
+                            HStack {
+                                Text("Total")
+                                    .font(.system(size: 34, weight: .bold))
+                                Spacer()
+                                Text("$\(receipt.total, specifier: "%.2f")")
+                                    .font(.system(size: 34, weight: .bold))
+                            }
+                        }
+                        .font(.system(size: 16, weight: .medium))
+                        .padding(20)
                     }
+                    .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 26, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 26, style: .continuous)
+                            .stroke(Color.white.opacity(0.35), lineWidth: 1)
+                    )
                 }
-                .padding(20)
-
-                Divider()
-
-                VStack(spacing: 10) {
-                    HStack {
-                        Text("Subtotal")
-                            .foregroundStyle(AppColors.muted)
-                        Spacer()
-                        Text("$\(subtotal, specifier: "%.2f")")
-                            .foregroundStyle(AppColors.muted)
-                    }
-
-                    HStack {
-                        Text("Tax")
-                            .foregroundStyle(AppColors.muted)
-                        Spacer()
-                        Text("$\(tax, specifier: "%.2f")")
-                            .foregroundStyle(AppColors.muted)
-                    }
-
-                    Divider()
-
-                    HStack {
-                        Text("Total")
-                            .font(.system(size: 34, weight: .bold))
-                        Spacer()
-                        Text("$\(receipt.total, specifier: "%.2f")")
-                            .font(.system(size: 34, weight: .bold))
-                    }
-                }
-                .font(.system(size: 16, weight: .medium))
-                .padding(20)
-            }
-                .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 26, style: .continuous))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 26, style: .continuous)
-                        .stroke(Color.white.opacity(0.35), lineWidth: 1)
-                )
-                .shadow(color: .black.opacity(0.05), radius: 12, x: 0, y: 4)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
             }
             .padding()
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         }
         .background(AppColors.bg.ignoresSafeArea())
         .toolbar(.hidden, for: .navigationBar)
+        .onAppear {
+            isPrinting = false
+            printStartTask?.cancel()
+            // Wait for the navigation transition to finish before printing.
+            // This makes the paper animation readable and avoids overlapping motions.
+            printStartTask = Task { @MainActor in
+                try? await Task.sleep(nanoseconds: 420_000_000)
+                isPrinting = true
+            }
+        }
         .onDisappear {
+            printStartTask?.cancel()
             onClose()
         }
     }
@@ -465,14 +494,172 @@ private struct ReceiptDetailView: View {
     }
 }
 
+private struct TicketPrinterView<Content: View>: View {
+    let isPrinting: Bool
+    let content: Content
+
+    @State private var progress: CGFloat = 0
+    @State private var microSettle: CGFloat = 0
+    @State private var printHapticsTask: Task<Void, Never>?
+    @State private var repositionTask: Task<Void, Never>?
+    @State private var dockToTop = false
+    private let printDuration: Double = 1.95
+    private let hapticsStartDelay: Double = 0.30
+
+    init(isPrinting: Bool, @ViewBuilder content: () -> Content) {
+        self.isPrinting = isPrinting
+        self.content = content()
+    }
+
+    var body: some View {
+        GeometryReader { proxy in
+            let edgeY = proxy.size.height
+            let travel = edgeY + 40 // starts hidden below the bottom edge slit
+
+            ZStack(alignment: .bottom) {
+                // Ticket layer: clipped so only area ABOVE the slit is visible.
+                // This creates a true "printing out of slit" reveal.
+                content
+                    .frame(
+                        maxWidth: .infinity,
+                        maxHeight: .infinity,
+                        alignment: dockToTop ? .top : .bottom
+                    )
+                    .offset(y: (1 - progress) * travel + microSettle)
+                    // Subtle edge bend/compression while the bottom passes the edge.
+                    // It quickly relaxes to flat as printing completes.
+                    .rotation3DEffect(
+                        .degrees(1.7 * edgeBendProgress),
+                        axis: (x: 1, y: 0, z: 0),
+                        anchor: .bottom,
+                        perspective: 0.55
+                    )
+                    .scaleEffect(
+                        x: 1,
+                        y: 1 - (0.012 * edgeBendProgress),
+                        anchor: .bottom
+                    )
+                    .blur(radius: 0.35 * edgeBendProgress)
+                    .overlay(alignment: .bottom) {
+                        LinearGradient(
+                            colors: [
+                                Color.black.opacity(0.06 * edgeBendProgress),
+                                Color.white.opacity(0.04 * edgeBendProgress),
+                                .clear
+                            ],
+                            startPoint: .bottom,
+                            endPoint: .top
+                        )
+                        .frame(height: 14)
+                    }
+                    .mask(alignment: .top) {
+                        Rectangle()
+                            .frame(height: max(0, edgeY))
+                    }
+                    .zIndex(1)
+
+                // Slightly more visible bottom slit (still anchored to bottom edge).
+                Capsule(style: .continuous)
+                    .fill(
+                        LinearGradient(
+                            colors: [
+                                Color.black.opacity(0.18),
+                                Color.black.opacity(0.30),
+                                Color.black.opacity(0.20)
+                            ],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
+                    )
+                    .frame(height: 6)
+                    .frame(maxWidth: .infinity)
+                    .overlay {
+                        Capsule(style: .continuous)
+                            .stroke(Color.white.opacity(0.08), lineWidth: 0.6)
+                            .frame(maxWidth: .infinity)
+                    }
+                    .shadow(color: .black.opacity(0.18), radius: 3, x: 0, y: 1)
+                    .zIndex(2)
+            }
+            .onChange(of: isPrinting) { _, newValue in
+                guard newValue else { return }
+                progress = 0
+                microSettle = 0
+                dockToTop = false
+                printHapticsTask?.cancel()
+                repositionTask?.cancel()
+                // Mechanical timing: quick start and slower finish.
+                withAnimation(.timingCurve(0.20, 0.00, 0.10, 1.0, duration: printDuration)) {
+                    progress = 1
+                }
+                startPrintHaptics()
+                // Tiny end settle (very low amplitude).
+                DispatchQueue.main.asyncAfter(deadline: .now() + printDuration - 0.02) {
+                    withAnimation(.easeOut(duration: 0.09)) {
+                        microSettle = -1.2
+                    }
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.09) {
+                        withAnimation(.easeIn(duration: 0.08)) {
+                            microSettle = 0
+                        }
+                    }
+                }
+                repositionTask = Task { @MainActor in
+                    // After the print phase, move the receipt to the top smoothly.
+                    try? await Task.sleep(nanoseconds: UInt64((printDuration + 0.04) * 1_000_000_000))
+                    guard !Task.isCancelled else { return }
+                    withAnimation(.timingCurve(0.18, 0.92, 0.16, 1.0, duration: 1.55)) {
+                        dockToTop = true
+                    }
+                }
+            }
+            .onDisappear {
+                printHapticsTask?.cancel()
+                repositionTask?.cancel()
+            }
+        }
+    }
+
+    private var edgeBendProgress: CGFloat {
+        // Only bend near the start of the print, then flatten out.
+        // 1 -> strong bend right at emergence, 0 -> no bend once mostly out.
+        let threshold: CGFloat = 0.23
+        return max(0, min(1, (threshold - progress) / threshold))
+    }
+
+    private func startPrintHaptics() {
+        printHapticsTask = Task { @MainActor in
+            Haptics.prepare()
+            // Align first tick with first visible emergence of the receipt.
+            try? await Task.sleep(nanoseconds: UInt64(hapticsStartDelay * 1_000_000_000))
+            guard !Task.isCancelled else { return }
+            let start = Date()
+            while !Task.isCancelled {
+                let elapsed = Date().timeIntervalSince(start)
+                if elapsed >= (printDuration - hapticsStartDelay) { break }
+
+                // Mechanical "tick" cadence: quick ticks at the start,
+                // subtly slowing as the print nears completion.
+                Haptics.light()
+                let phase = elapsed / max(0.001, (printDuration - hapticsStartDelay))
+                let interval = 0.055 + (0.060 * phase)
+                try? await Task.sleep(nanoseconds: UInt64(interval * 1_000_000_000))
+            }
+        }
+    }
+}
+
 private struct ScanView: View {
     let onReceiptScanned: (ReceiptModel) -> Void
+    @Binding var isCameraSettingsModalVisible: Bool
+    @Environment(\.scenePhase) private var scenePhase
     @State private var cameraStatus: AVAuthorizationStatus = AVCaptureDevice.authorizationStatus(for: .video)
     @State private var scannedValue = ""
     @State private var showScanAlert = false
     @State private var scanAlertTitle = "QR Scanned"
     @State private var isProcessingScan = false
     @State private var scanLinePhase = false
+    @State private var showCameraSettingsAlert = false
     #if targetEnvironment(simulator)
     private let isSimulator = true
     #else
@@ -577,36 +764,32 @@ private struct ScanView: View {
 
                 Spacer(minLength: 8)
 
-                if isSimulator || cameraStatus != .authorized {
+                if isSimulator {
                     Button {
-                        if isSimulator {
-                            let demoPayload = """
-                            {
-                              "store_name":"Simulator FreshMart",
-                              "store_address":"123 Main St, San Francisco, CA",
-                              "purchase_date":"\(ISO8601DateFormatter().string(from: Date()))",
-                              "items":[{"name":"Whole Milk 2L","quantity":1,"unit_price":2.49},{"name":"Sourdough Bread","quantity":1,"unit_price":3.99}],
-                              "subtotal":6.48,
-                              "tax":0.52,
-                              "total":7.00,
-                              "payment_method":"credit_card",
-                              "receipt_id":"SIM-\(Int(Date().timeIntervalSince1970))"
-                            }
-                            """
-                            do {
-                                scanLinePhase = false
-                                let receipt = try ReceiptModel.fromQRCode(demoPayload)
-                                onReceiptScanned(receipt)
-                            } catch {
-                                scanAlertTitle = "Invalid QR"
-                                scannedValue = error.localizedDescription
-                                showScanAlert = true
-                            }
-                        } else {
-                            requestCameraAccess()
+                        let demoPayload = """
+                        {
+                          "store_name":"Simulator FreshMart",
+                          "store_address":"123 Main St, San Francisco, CA",
+                          "purchase_date":"\(ISO8601DateFormatter().string(from: Date()))",
+                          "items":[{"name":"Whole Milk 2L","quantity":1,"unit_price":2.49},{"name":"Sourdough Bread","quantity":1,"unit_price":3.99}],
+                          "subtotal":6.48,
+                          "tax":0.52,
+                          "total":7.00,
+                          "payment_method":"credit_card",
+                          "receipt_id":"SIM-\(Int(Date().timeIntervalSince1970))"
+                        }
+                        """
+                        do {
+                            scanLinePhase = false
+                            let receipt = try ReceiptModel.fromQRCode(demoPayload)
+                            onReceiptScanned(receipt)
+                        } catch {
+                            scanAlertTitle = "Invalid QR"
+                            scannedValue = error.localizedDescription
+                            showScanAlert = true
                         }
                     } label: {
-                        Text(isSimulator ? "Simulate QR Scan" : "Enable Camera")
+                        Text("Simulate QR Scan")
                             .font(.system(size: 16, weight: .semibold))
                             .frame(maxWidth: .infinity)
                             .frame(height: 52)
@@ -624,10 +807,57 @@ private struct ScanView: View {
                 requestCameraAccess()
             }
         }
+        .onChange(of: scenePhase) { _, newPhase in
+            guard !isSimulator, newPhase == .active else { return }
+            refreshCameraStatus()
+        }
+        .onChange(of: showCameraSettingsAlert) { _, newValue in
+            isCameraSettingsModalVisible = newValue
+        }
+        .onDisappear {
+            isCameraSettingsModalVisible = false
+        }
         .alert(scanAlertTitle, isPresented: $showScanAlert) {
             Button("OK") {}
         } message: {
             Text(scannedValue)
+        }
+        .overlay {
+            if showCameraSettingsAlert {
+                ZStack {
+                    VStack(spacing: 14) {
+                        Image(systemName: "camera.fill")
+                            .font(.system(size: 24, weight: .semibold))
+                            .foregroundStyle(AppColors.primary)
+                            .frame(width: 52, height: 52)
+                            .background(AppColors.accent.opacity(0.75), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+
+                        Text("Camera Access Needed")
+                            .font(.system(size: 20, weight: .bold, design: .rounded))
+                            .multilineTextAlignment(.center)
+
+                        Text("Turn on Camera access in Settings to scan QR receipts.")
+                            .font(.system(size: 14, weight: .medium))
+                            .foregroundStyle(AppColors.muted)
+                            .multilineTextAlignment(.center)
+
+                        Button {
+                            openAppSettings()
+                        } label: {
+                            Text("Open Settings")
+                                .font(.system(size: 15, weight: .semibold))
+                                .frame(maxWidth: .infinity)
+                                .frame(height: 46)
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .tint(AppColors.primary)
+                        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    }
+                    .padding(20)
+                    .frame(maxWidth: 320)
+                    .glassCard()
+                }
+            }
         }
     }
 
@@ -635,13 +865,36 @@ private struct ScanView: View {
         let status = AVCaptureDevice.authorizationStatus(for: .video)
         if status == .authorized || status == .denied || status == .restricted {
             cameraStatus = status
+            if status == .denied {
+                showCameraSettingsAlert = true
+            }
             return
         }
 
         AVCaptureDevice.requestAccess(for: .video) { granted in
             DispatchQueue.main.async {
                 cameraStatus = granted ? .authorized : .denied
+                if !granted {
+                    showCameraSettingsAlert = true
+                }
             }
+        }
+    }
+
+    private func refreshCameraStatus() {
+        let status = AVCaptureDevice.authorizationStatus(for: .video)
+        cameraStatus = status
+        if status == .denied {
+            showCameraSettingsAlert = true
+        } else {
+            showCameraSettingsAlert = false
+        }
+    }
+
+    private func openAppSettings() {
+        guard let url = URL(string: UIApplication.openSettingsURLString) else { return }
+        if UIApplication.shared.canOpenURL(url) {
+            UIApplication.shared.open(url)
         }
     }
 }
