@@ -510,20 +510,12 @@ private struct TicketPrinterView<Content: View>: View {
     var body: some View {
         GeometryReader { proxy in
             let edgeY = proxy.size.height
-            let travel = edgeY + 40 // starts hidden below the bottom edge slit
-            let slitHeight: CGFloat = 8
-            let backLipYOffset: CGFloat = -2.8
-            let frontLipYOffset: CGFloat = 1.0
+            let slitHeight: CGFloat = 10
+            let slitCornerRadius: CGFloat = 5
+            let slitMidY = edgeY - (slitHeight / 2)
+            let travel = edgeY + 40 // starts hidden below the slit
 
             ZStack(alignment: .bottom) {
-                // Back slit lip (behind paper) to create hollow depth.
-                Capsule(style: .continuous)
-                    .fill(Color.black.opacity(0.88))
-                    .frame(height: slitHeight)
-                    .frame(maxWidth: .infinity)
-                    .offset(y: backLipYOffset)
-                    .zIndex(0)
-
                 // Ticket layer: clipped so only area ABOVE the slit is visible.
                 // This creates a true "printing out of slit" reveal.
                 content
@@ -561,18 +553,18 @@ private struct TicketPrinterView<Content: View>: View {
                     }
                     .mask(alignment: .top) {
                         Rectangle()
-                            .frame(height: max(0, edgeY))
+                            .frame(height: max(0, slitMidY))
                     }
-                    .zIndex(1)
+                    .zIndex(2)
 
-                // Front slit lip (above paper). Slot stays fixed while paper moves.
-                FrontSlitLipShape(bottomCornerRadius: slitHeight * 0.5)
-                    .fill(Color.black.opacity(0.96))
+                // Single slit element: rounded rectangle border, no fill.
+                RoundedRectangle(cornerRadius: slitCornerRadius, style: .continuous)
+                    .stroke(Color.black.opacity(0.42), lineWidth: 5.6)
                     .frame(height: slitHeight)
                     .frame(maxWidth: .infinity)
-                    .offset(y: frontLipYOffset)
-                    .shadow(color: .black.opacity(0.20), radius: 2, x: 0, y: 1)
-                    .zIndex(2)
+                    .padding(.horizontal, -7)
+                    .shadow(color: .black.opacity(0.14), radius: 1.2, x: 0, y: 0.8)
+                    .zIndex(1)
             }
             .onChange(of: isPrinting) { _, newValue in
                 guard newValue else { return }
@@ -639,30 +631,6 @@ private struct TicketPrinterView<Content: View>: View {
                 try? await Task.sleep(nanoseconds: UInt64(interval * 1_000_000_000))
             }
         }
-    }
-}
-
-private struct FrontSlitLipShape: Shape {
-    let bottomCornerRadius: CGFloat
-
-    func path(in rect: CGRect) -> Path {
-        let r = min(bottomCornerRadius, rect.height * 0.5, rect.width * 0.5)
-
-        var path = Path()
-        path.move(to: CGPoint(x: rect.minX, y: rect.minY))
-        path.addLine(to: CGPoint(x: rect.maxX, y: rect.minY))
-        path.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY - r))
-        path.addQuadCurve(
-            to: CGPoint(x: rect.maxX - r, y: rect.maxY),
-            control: CGPoint(x: rect.maxX, y: rect.maxY)
-        )
-        path.addLine(to: CGPoint(x: rect.minX + r, y: rect.maxY))
-        path.addQuadCurve(
-            to: CGPoint(x: rect.minX, y: rect.maxY - r),
-            control: CGPoint(x: rect.minX, y: rect.maxY)
-        )
-        path.closeSubpath()
-        return path
     }
 }
 
