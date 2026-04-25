@@ -48,6 +48,83 @@ struct LiquidCapsule: ViewModifier {
     }
 }
 
+struct ReceiptPaperCard: ViewModifier {
+    func body(content: Content) -> some View {
+        content
+            .background {
+                RoundedRectangle(cornerRadius: 26, style: .continuous)
+                    .fill(
+                        LinearGradient(
+                            colors: [
+                                Color.white.opacity(0.98),
+                                Color(red: 0.982, green: 0.980, blue: 0.972),
+                                Color.white.opacity(0.97)
+                            ],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+                    .overlay {
+                        // Texture stays intentionally subtle for an Apple-clean paper feel.
+                        Image("ReceiptPaperTexture")
+                            .resizable()
+                            .scaledToFill()
+                            .blendMode(.multiply)
+                            .opacity(0.34)
+                            .saturation(0.97)
+                            .contrast(1.14)
+                            .clipShape(RoundedRectangle(cornerRadius: 26, style: .continuous))
+                    }
+                    .overlay {
+                        // Secondary grain pass for more tactile paper realism.
+                        Image("ReceiptPaperTexture")
+                            .resizable()
+                            .scaledToFill()
+                            .blendMode(.softLight)
+                            .opacity(0.22)
+                            .clipShape(RoundedRectangle(cornerRadius: 26, style: .continuous))
+                    }
+                    .overlay {
+                        LinearGradient(
+                            colors: [
+                                Color.white.opacity(0.42),
+                                .clear,
+                                Color.black.opacity(0.08)
+                            ],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
+                        .clipShape(RoundedRectangle(cornerRadius: 26, style: .continuous))
+                    }
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 26, style: .continuous)
+                            .inset(by: 1)
+                            .stroke(Color.black.opacity(0.05), lineWidth: 1)
+                            .blur(radius: 1.3)
+                            .mask(
+                                RoundedRectangle(cornerRadius: 26, style: .continuous)
+                                    .fill(
+                                        LinearGradient(
+                                            colors: [.black, .clear, .black.opacity(0.75)],
+                                            startPoint: .top,
+                                            endPoint: .bottom
+                                        )
+                                    )
+                            )
+                    }
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 26, style: .continuous)
+                            .stroke(Color.white.opacity(0.70), lineWidth: 1)
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 26, style: .continuous)
+                            .stroke(Color.black.opacity(0.07), lineWidth: 0.7)
+                    )
+                    .clipShape(RoundedRectangle(cornerRadius: 26, style: .continuous))
+            }
+    }
+}
+
 extension View {
     func glassCard() -> some View {
         modifier(GlassCard())
@@ -55,5 +132,9 @@ extension View {
 
     func liquidCapsule(tint: Color = .clear, interactive: Bool = false) -> some View {
         modifier(LiquidCapsule(tint: tint, interactive: interactive))
+    }
+
+    func receiptPaperCard() -> some View {
+        modifier(ReceiptPaperCard())
     }
 }
