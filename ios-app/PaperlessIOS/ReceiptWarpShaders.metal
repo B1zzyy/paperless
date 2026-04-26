@@ -29,7 +29,7 @@ using namespace metal;
     );
 
     // Strong trapezoid-like squeeze below the line, no squeeze above it.
-    float squeeze = clamp(amount * belowLine * 0.05, 0.0, 0.07);
+    float squeeze = clamp(amount * belowLine * 0.02, 0.0, 0.03);
     float invScaleX = 1.0 / max(0.10, 1.0 - squeeze);
 
     // For distortionEffect we return source coordinates for each destination pixel.
