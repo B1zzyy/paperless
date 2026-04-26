@@ -514,6 +514,8 @@ private struct TicketPrinterView<Content: View>: View {
             let slitCornerRadius: CGFloat = 5
             let slitMidY = edgeY - (slitHeight / 2)
             let travel = edgeY + 40 // starts hidden below the slit
+            let releaseLineFromBottom: CGFloat = slitHeight - 2
+            let releaseTransition: CGFloat = 14
 
             ZStack(alignment: .bottom) {
                 // Ticket layer: clipped so only area ABOVE the slit is visible.
@@ -533,11 +535,6 @@ private struct TicketPrinterView<Content: View>: View {
                         anchor: .bottom,
                         perspective: 0.55
                     )
-                    .scaleEffect(
-                        x: 1,
-                        y: 1 - (0.012 * edgeBendProgress),
-                        anchor: .bottom
-                    )
                     .blur(radius: 0.35 * edgeBendProgress)
                     .overlay(alignment: .bottom) {
                         LinearGradient(
@@ -555,16 +552,28 @@ private struct TicketPrinterView<Content: View>: View {
                         Rectangle()
                             .frame(height: max(0, slitMidY))
                     }
+                    .modifier(
+                        ReceiptEdgeWarpModifier(
+                            amount: warpAmount,
+                            releaseLineFromBottom: releaseLineFromBottom,
+                            releaseTransition: releaseTransition
+                        )
+                    )
                     .zIndex(2)
 
                 // Single slit element: rounded rectangle border, no fill.
                 RoundedRectangle(cornerRadius: slitCornerRadius, style: .continuous)
-                    .stroke(Color.black.opacity(0.42), lineWidth: 5.6)
+                    .fill(Color.black.opacity(0.18))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: slitCornerRadius, style: .continuous)
+                            .stroke(Color.black.opacity(0.42), lineWidth: 5.6)
+                    }
                     .frame(height: slitHeight)
                     .frame(maxWidth: .infinity)
                     .padding(.horizontal, -7)
                     .shadow(color: .black.opacity(0.14), radius: 1.2, x: 0, y: 0.8)
                     .zIndex(1)
+
             }
             .onChange(of: isPrinting) { _, newValue in
                 guard newValue else { return }
@@ -606,10 +615,17 @@ private struct TicketPrinterView<Content: View>: View {
     }
 
     private var edgeBendProgress: CGFloat {
-        // Only bend near the start of the print, then flatten out.
-        // 1 -> strong bend right at emergence, 0 -> no bend once mostly out.
-        let threshold: CGFloat = 0.23
-        return max(0, min(1, (threshold - progress) / threshold))
+        // Keep pinched early, then snap open in a very short window ("BAM" release).
+        let holdUntil: CGFloat = 0.72
+        let releaseWindow: CGFloat = 0.04
+        if progress <= holdUntil { return 1 }
+        return max(0, min(1, 1 - ((progress - holdUntil) / releaseWindow)))
+    }
+
+    private var warpAmount: CGFloat {
+        // During print phase, keep shader squeeze active and let the release line control expansion.
+        // Once the card docks to top, disable warp entirely.
+        dockToTop ? 0 : 1
     }
 
     private func startPrintHaptics() {
@@ -627,9 +643,34 @@ private struct TicketPrinterView<Content: View>: View {
                 // subtly slowing as the print nears completion.
                 Haptics.light()
                 let phase = elapsed / max(0.001, (printDuration - hapticsStartDelay))
-                let interval = 0.055 + (0.060 * phase)
+                let interval = 0.012 + (0.009 * phase)
                 try? await Task.sleep(nanoseconds: UInt64(interval * 1_000_000_000))
             }
+        }
+    }
+}
+
+private struct ReceiptEdgeWarpModifier: ViewModifier {
+    let amount: CGFloat
+    let releaseLineFromBottom: CGFloat
+    let releaseTransition: CGFloat
+
+    func body(content: Content) -> some View {
+        if #available(iOS 17.0, *) {
+            content.visualEffect { view, proxy in
+                view.distortionEffect(
+                    ShaderLibrary.receiptExitWarp(
+                        .float(Float(amount)),
+                        .float(Float(proxy.size.width)),
+                        .float(Float(proxy.size.height)),
+                        .float(Float(releaseLineFromBottom)),
+                        .float(Float(releaseTransition))
+                    ),
+                    maxSampleOffset: CGSize(width: 140, height: 0)
+                )
+            }
+        } else {
+            content
         }
     }
 }

@@ -18,6 +18,7 @@
 		A00100090000000000000001 /* CameraQRScannerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00110090000000000000001 /* CameraQRScannerView.swift */; };
 		A00100100000000000000001 /* ReceiptStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00110100000000000000001 /* ReceiptStore.swift */; };
 		A00100110000000000000001 /* ProfileStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00110110000000000000001 /* ProfileStore.swift */; };
+		A00100120000000000000001 /* ReceiptWarpShaders.metal in Sources */ = {isa = PBXBuildFile; fileRef = A00110120000000000000001 /* ReceiptWarpShaders.metal */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -33,6 +34,7 @@
 		A00110090000000000000001 /* CameraQRScannerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CameraQRScannerView.swift; sourceTree = "<group>"; };
 		A00110100000000000000001 /* ReceiptStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReceiptStore.swift; sourceTree = "<group>"; };
 		A00110110000000000000001 /* ProfileStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfileStore.swift; sourceTree = "<group>"; };
+		A00110120000000000000001 /* ReceiptWarpShaders.metal */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.metal; path = ReceiptWarpShaders.metal; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -66,6 +68,7 @@
 				A00110090000000000000001 /* CameraQRScannerView.swift */,
 				A00110100000000000000001 /* ReceiptStore.swift */,
 				A00110110000000000000001 /* ProfileStore.swift */,
+				A00110120000000000000001 /* ReceiptWarpShaders.metal */,
 				A00110070000000000000001 /* Assets.xcassets */,
 				A00130030000000000000001 /* Preview Content */,
 			);
@@ -166,6 +169,7 @@
 				A00100090000000000000001 /* CameraQRScannerView.swift in Sources */,
 				A00100100000000000000001 /* ReceiptStore.swift in Sources */,
 				A00100110000000000000001 /* ProfileStore.swift in Sources */,
+				A00100120000000000000001 /* ReceiptWarpShaders.metal in Sources */,
 				A00100010000000000000001 /* PaperlessIOSApp.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
