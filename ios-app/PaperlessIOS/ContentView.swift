@@ -498,7 +498,9 @@ private struct TicketPrinterView<Content: View>: View {
     @State private var microSettle: CGFloat = 0
     @State private var printHapticsTask: Task<Void, Never>?
     @State private var repositionTask: Task<Void, Never>?
+    @State private var slitCollapseTask: Task<Void, Never>?
     @State private var dockToTop = false
+    @State private var slitScaleX: CGFloat = 1
     private let printDuration: Double = 1.95
     private let hapticsStartDelay: Double = 0.30
 
@@ -571,6 +573,8 @@ private struct TicketPrinterView<Content: View>: View {
                     .frame(height: slitHeight)
                     .frame(maxWidth: .infinity)
                     .padding(.horizontal, -7)
+                    .scaleEffect(x: slitScaleX, y: 1, anchor: .center)
+                    .opacity(Double(slitScaleX))
                     .shadow(color: .black.opacity(0.14), radius: 1.2, x: 0, y: 0.8)
                     .zIndex(1)
 
@@ -580,9 +584,11 @@ private struct TicketPrinterView<Content: View>: View {
                 progress = 0
                 microSettle = 0
                 dockToTop = false
+                slitScaleX = 1
                 printHapticsTask?.cancel()
                 Haptics.stopSoftContinuous()
                 repositionTask?.cancel()
+                slitCollapseTask?.cancel()
                 // Mechanical timing: quick start and slower finish.
                 withAnimation(.timingCurve(0.20, 0.00, 0.10, 1.0, duration: printDuration)) {
                     progress = 1
@@ -607,11 +613,20 @@ private struct TicketPrinterView<Content: View>: View {
                         dockToTop = true
                     }
                 }
+                slitCollapseTask = Task { @MainActor in
+                    // Start slit collapse shortly after print completes.
+                    try? await Task.sleep(nanoseconds: UInt64((printDuration + 0.26) * 1_000_000_000))
+                    guard !Task.isCancelled else { return }
+                    withAnimation(.timingCurve(0.30, 0.95, 0.60, 1.0, duration: 0.30)) {
+                        slitScaleX = 0.001
+                    }
+                }
             }
             .onDisappear {
                 printHapticsTask?.cancel()
                 Haptics.stopSoftContinuous()
                 repositionTask?.cancel()
+                slitCollapseTask?.cancel()
             }
         }
     }
