@@ -581,6 +581,7 @@ private struct TicketPrinterView<Content: View>: View {
                 microSettle = 0
                 dockToTop = false
                 printHapticsTask?.cancel()
+                Haptics.stopSoftContinuous()
                 repositionTask?.cancel()
                 // Mechanical timing: quick start and slower finish.
                 withAnimation(.timingCurve(0.20, 0.00, 0.10, 1.0, duration: printDuration)) {
@@ -609,6 +610,7 @@ private struct TicketPrinterView<Content: View>: View {
             }
             .onDisappear {
                 printHapticsTask?.cancel()
+                Haptics.stopSoftContinuous()
                 repositionTask?.cancel()
             }
         }
@@ -634,18 +636,7 @@ private struct TicketPrinterView<Content: View>: View {
             // Align first tick with first visible emergence of the receipt.
             try? await Task.sleep(nanoseconds: UInt64(hapticsStartDelay * 1_000_000_000))
             guard !Task.isCancelled else { return }
-            let start = Date()
-            while !Task.isCancelled {
-                let elapsed = Date().timeIntervalSince(start)
-                if elapsed >= (printDuration - hapticsStartDelay) { break }
-
-                // Mechanical "tick" cadence: quick ticks at the start,
-                // subtly slowing as the print nears completion.
-                Haptics.light()
-                let phase = elapsed / max(0.001, (printDuration - hapticsStartDelay))
-                let interval = 0.012 + (0.009 * phase)
-                try? await Task.sleep(nanoseconds: UInt64(interval * 1_000_000_000))
-            }
+            Haptics.startSoftContinuous(duration: printDuration - hapticsStartDelay)
         }
     }
 }
