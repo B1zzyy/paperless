@@ -329,6 +329,7 @@ private struct ReceiptDetailView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var isPrinting = false
     @State private var printStartTask: Task<Void, Never>?
+    @State private var didTriggerEdgeDismiss = false
     private static let receiptDateFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.dateFormat = "MMM d, yyyy · h:mm a"
@@ -336,124 +337,143 @@ private struct ReceiptDetailView: View {
     }()
 
     var body: some View {
-        GeometryReader { _ in
-            VStack(alignment: .leading, spacing: 14) {
-                HStack {
-                    Button {
-                        dismiss()
-                    } label: {
-                        Image(systemName: "chevron.left")
-                            .font(.system(size: 16, weight: .semibold))
-                            .foregroundStyle(AppColors.text)
-                            .frame(width: 34, height: 34)
-                            .background(Color.white.opacity(0.65), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-                    }
-                    Spacer()
-                    Text("Receipt")
-                        .font(.system(size: 17, weight: .semibold))
-                    Spacer()
-                    Color.clear
-                        .frame(width: 34, height: 34)
-                }
-                .padding(.horizontal, 2)
-
-                TicketPrinterView(isPrinting: isPrinting) {
-                    VStack(alignment: .leading, spacing: 0) {
-                        VStack(alignment: .leading, spacing: 14) {
-                            HStack(spacing: 12) {
-                                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                                    .fill(AppColors.accent)
-                                    .frame(width: 56, height: 56)
-                                    .overlay(Image(systemName: "storefront").font(.system(size: 24)).foregroundStyle(AppColors.primary))
-
-                                VStack(alignment: .leading, spacing: 4) {
-                                    Text(receipt.storeName)
-                                        .font(.system(size: 22, weight: .bold, design: .rounded))
-                                    Text(displayReceiptCode)
-                                        .font(.system(size: 13, weight: .medium, design: .monospaced))
-                                        .foregroundStyle(AppColors.muted)
-                                }
-                            }
-
-                            HStack(spacing: 24) {
-                                Label(formattedDate(receipt.purchaseDate), systemImage: "calendar")
-                                Label(receipt.paymentMethod.capitalized, systemImage: "creditcard")
-                            }
-                            .font(.system(size: 13, weight: .medium))
-                            .foregroundStyle(AppColors.muted)
-
-                            Label(receipt.storeAddress, systemImage: "location")
-                                .font(.system(size: 13, weight: .medium))
-                                .foregroundStyle(AppColors.muted)
+        GeometryReader { proxy in
+            ZStack(alignment: .leading) {
+                VStack(alignment: .leading, spacing: 14) {
+                    HStack {
+                        Button {
+                            dismiss()
+                        } label: {
+                            Image(systemName: "chevron.left")
+                                .font(.system(size: 16, weight: .semibold))
+                                .foregroundStyle(AppColors.text)
+                                .frame(width: 34, height: 34)
+                                .background(Color.white.opacity(0.65), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
                         }
-                        .padding(20)
+                        Spacer()
+                        Text("Receipt")
+                            .font(.system(size: 17, weight: .semibold))
+                        Spacer()
+                        Color.clear
+                            .frame(width: 34, height: 34)
+                    }
+                    .padding(.horizontal, 2)
 
-                        Divider()
+                    TicketPrinterView(isPrinting: isPrinting) {
+                        VStack(alignment: .leading, spacing: 0) {
+                            VStack(alignment: .leading, spacing: 14) {
+                                HStack(spacing: 12) {
+                                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                        .fill(AppColors.accent)
+                                        .frame(width: 56, height: 56)
+                                        .overlay(Image(systemName: "storefront").font(.system(size: 24)).foregroundStyle(AppColors.primary))
 
-                        VStack(alignment: .leading, spacing: 14) {
-                            Label("ITEMS", systemImage: "list.bullet.rectangle")
-                                .font(.system(size: 13, weight: .semibold))
-                                .foregroundStyle(AppColors.muted)
-
-                            VStack(spacing: 14) {
-                                ForEach(receipt.items) { item in
-                                    HStack(alignment: .top) {
-                                        VStack(alignment: .leading, spacing: 3) {
-                                            Text(item.name)
-                                                .font(.system(size: 18, weight: .semibold))
-                                            if item.quantity > 1 {
-                                                Text("\(item.quantity) × $\(item.unitPrice, specifier: "%.2f")")
-                                                    .font(.system(size: 12, weight: .medium))
-                                                    .foregroundStyle(AppColors.muted)
-                                            }
-                                        }
-                                        Spacer()
-                                        Text("$\(item.total, specifier: "%.2f")")
-                                            .font(.system(size: 18, weight: .semibold))
+                                    VStack(alignment: .leading, spacing: 4) {
+                                        Text(receipt.storeName)
+                                            .font(.system(size: 22, weight: .bold, design: .rounded))
+                                        Text(displayReceiptCode)
+                                            .font(.system(size: 13, weight: .medium, design: .monospaced))
+                                            .foregroundStyle(AppColors.muted)
                                     }
                                 }
-                            }
-                        }
-                        .padding(20)
 
-                        Divider()
+                                HStack(spacing: 24) {
+                                    Label(formattedDate(receipt.purchaseDate), systemImage: "calendar")
+                                    Label(receipt.paymentMethod.capitalized, systemImage: "creditcard")
+                                }
+                                .font(.system(size: 13, weight: .medium))
+                                .foregroundStyle(AppColors.muted)
 
-                        VStack(spacing: 10) {
-                            HStack {
-                                Text("Subtotal")
-                                    .foregroundStyle(AppColors.muted)
-                                Spacer()
-                                Text("$\(subtotal, specifier: "%.2f")")
+                                Label(receipt.storeAddress, systemImage: "location")
+                                    .font(.system(size: 13, weight: .medium))
                                     .foregroundStyle(AppColors.muted)
                             }
-
-                            HStack {
-                                Text("Tax")
-                                    .foregroundStyle(AppColors.muted)
-                                Spacer()
-                                Text("$\(tax, specifier: "%.2f")")
-                                    .foregroundStyle(AppColors.muted)
-                            }
+                            .padding(20)
 
                             Divider()
 
-                            HStack {
-                                Text("Total")
-                                    .font(.system(size: 34, weight: .bold))
-                                Spacer()
-                                Text("$\(receipt.total, specifier: "%.2f")")
-                                    .font(.system(size: 34, weight: .bold))
+                            VStack(alignment: .leading, spacing: 14) {
+                                Label("ITEMS", systemImage: "list.bullet.rectangle")
+                                    .font(.system(size: 13, weight: .semibold))
+                                    .foregroundStyle(AppColors.muted)
+
+                                VStack(spacing: 14) {
+                                    ForEach(receipt.items) { item in
+                                        HStack(alignment: .top) {
+                                            VStack(alignment: .leading, spacing: 3) {
+                                                Text(item.name)
+                                                    .font(.system(size: 18, weight: .semibold))
+                                                if item.quantity > 1 {
+                                                    Text("\(item.quantity) × $\(item.unitPrice, specifier: "%.2f")")
+                                                        .font(.system(size: 12, weight: .medium))
+                                                        .foregroundStyle(AppColors.muted)
+                                                }
+                                            }
+                                            Spacer()
+                                            Text("$\(item.total, specifier: "%.2f")")
+                                                .font(.system(size: 18, weight: .semibold))
+                                        }
+                                    }
+                                }
                             }
+                            .padding(20)
+
+                            Divider()
+
+                            VStack(spacing: 10) {
+                                HStack {
+                                    Text("Subtotal")
+                                        .foregroundStyle(AppColors.muted)
+                                    Spacer()
+                                    Text("$\(subtotal, specifier: "%.2f")")
+                                        .foregroundStyle(AppColors.muted)
+                                }
+
+                                HStack {
+                                    Text("Tax")
+                                        .foregroundStyle(AppColors.muted)
+                                    Spacer()
+                                    Text("$\(tax, specifier: "%.2f")")
+                                        .foregroundStyle(AppColors.muted)
+                                }
+
+                                Divider()
+
+                                HStack {
+                                    Text("Total")
+                                        .font(.system(size: 34, weight: .bold))
+                                    Spacer()
+                                    Text("$\(receipt.total, specifier: "%.2f")")
+                                        .font(.system(size: 34, weight: .bold))
+                                }
+                            }
+                            .font(.system(size: 16, weight: .medium))
+                            .padding(20)
                         }
-                        .font(.system(size: 16, weight: .medium))
-                        .padding(20)
+                        .receiptPaperCard()
                     }
-                    .receiptPaperCard()
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
                 }
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+                .padding()
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+
+                // Swipe from the left screen edge to dismiss receipt detail.
+                Color.clear
+                    .frame(width: 28)
+                    .contentShape(Rectangle())
+                    .gesture(
+                        DragGesture(minimumDistance: 16, coordinateSpace: .local)
+                            .onEnded { value in
+                                guard !didTriggerEdgeDismiss else { return }
+                                let draggedRightEnough = value.translation.width > 80
+                                let mostlyHorizontal = abs(value.translation.width) > (abs(value.translation.height) * 1.2)
+                                guard draggedRightEnough, mostlyHorizontal else { return }
+                                didTriggerEdgeDismiss = true
+                                Haptics.light()
+                                dismiss()
+                            }
+                    )
             }
-            .padding()
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         }
         .background(AppColors.bg.ignoresSafeArea())
         .toolbar(.hidden, for: .navigationBar)
