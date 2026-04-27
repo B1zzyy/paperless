@@ -21,6 +21,7 @@ struct ContentView: View {
     @State private var totalAnimationTask: Task<Void, Never>?
     @StateObject private var profileStore = ProfileStore()
     @State private var isCameraSettingsModalVisible = false
+    @AppStorage("isTotalVisible") private var isTotalVisible = true
 
     var body: some View {
         NavigationStack {
@@ -42,7 +43,8 @@ struct ContentView: View {
                             receipts: receiptStore.receipts,
                             deferNextTotalAnimation: $deferNextTotalAnimation,
                             totalAnimationReleaseToken: totalAnimationReleaseToken,
-                            displayedTotal: displayedTotal
+                            displayedTotal: displayedTotal,
+                            isTotalVisible: $isTotalVisible
                         )
                     case .scan:
                         ScanView(
@@ -206,6 +208,7 @@ private struct ReceiptsView: View {
     @Binding var deferNextTotalAnimation: Bool
     let totalAnimationReleaseToken: Int
     let displayedTotal: Double
+    @Binding var isTotalVisible: Bool
     @State private var showAll = false
 
     private var visibleReceipts: [ReceiptModel] { showAll ? receipts : Array(receipts.prefix(3)) }
@@ -225,13 +228,33 @@ private struct ReceiptsView: View {
                 .padding(.top, 8)
 
                 VStack(alignment: .leading, spacing: 6) {
-                    Text("TOTAL SPENT")
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundStyle(.white.opacity(0.82))
-                    Text("$\(displayedTotal, specifier: "%.2f")")
-                        .font(.system(size: 34, weight: .bold, design: .rounded))
-                        .foregroundStyle(.white)
-                        .contentTransition(.numericText())
+                    HStack {
+                        Text("TOTAL SPENT")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundStyle(.white.opacity(0.82))
+                        Spacer()
+                        Button {
+                            isTotalVisible.toggle()
+                            Haptics.light()
+                        } label: {
+                            Image(systemName: isTotalVisible ? "eye.fill" : "eye.slash.fill")
+                                .font(.system(size: 14, weight: .semibold))
+                                .foregroundStyle(.white.opacity(0.90))
+                                .frame(width: 28, height: 28)
+                                .background(Color.white.opacity(0.16), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    Group {
+                        if isTotalVisible {
+                            Text("$\(displayedTotal, specifier: "%.2f")")
+                                .contentTransition(.numericText())
+                        } else {
+                            Text(maskedTotalText(for: displayedTotal))
+                        }
+                    }
+                    .font(.system(size: 34, weight: .bold, design: .rounded))
+                    .foregroundStyle(.white)
                     Text("\(receipts.count) receipts saved")
                         .font(.system(size: 12, weight: .medium))
                         .foregroundStyle(.white.opacity(0.72))
@@ -284,6 +307,19 @@ private struct ReceiptsView: View {
             .padding(.top, 20)
         }
         .scrollIndicators(.hidden)
+    }
+
+    private func maskedTotalText(for value: Double) -> String {
+        let formatter = NumberFormatter()
+        formatter.numberStyle = .decimal
+        formatter.groupingSeparator = ","
+        formatter.decimalSeparator = "."
+        formatter.minimumFractionDigits = 2
+        formatter.maximumFractionDigits = 2
+
+        let formatted = formatter.string(from: NSNumber(value: abs(value))) ?? "0.00"
+        let masked = formatted.map { $0.isNumber ? "x" : $0 }
+        return (value < 0 ? "-$" : "$") + String(masked)
     }
 }
 
