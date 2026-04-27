@@ -47,7 +47,12 @@ struct ContentView: View {
                         }
                     )
                     .tag(AppTab.receipts)
-                    .tabItem { Label("Receipts", systemImage: "doc.text") }
+                    .tabItem {
+                        Image(systemName: "doc.text")
+                            .symbolRenderingMode(.monochrome)
+                            .renderingMode(.template)
+                        Text("Receipts")
+                    }
 
                     ScanView(
                         onReceiptScanned: { scannedReceipt in
@@ -62,11 +67,21 @@ struct ContentView: View {
                         isCameraSettingsModalVisible: $isCameraSettingsModalVisible
                     )
                     .tag(AppTab.scan)
-                    .tabItem { Label("Scan", systemImage: "qrcode.viewfinder") }
+                    .tabItem {
+                        Image(systemName: "qrcode.viewfinder")
+                            .symbolRenderingMode(.monochrome)
+                            .renderingMode(.template)
+                        Text("Scan")
+                    }
 
                     ProfileView(profileStore: profileStore)
                         .tag(AppTab.profile)
-                        .tabItem { Label("Profile", systemImage: "person.crop.circle") }
+                        .tabItem {
+                            Image(systemName: "person.crop.circle")
+                                .symbolRenderingMode(.monochrome)
+                                .renderingMode(.template)
+                            Text("Profile")
+                        }
                 }
                 .tint(AppColors.primary)
                 .background(TabBarRuntimeConfigurator())
@@ -158,31 +173,43 @@ private struct TabBarRuntimeConfigurator: UIViewControllerRepresentable {
     }
 
     func updateUIViewController(_ uiViewController: UIViewController, context: Context) {
-        // Configure the concrete tab bar instance so style is applied on first render,
-        // not only after scene transitions.
+        applyAppearance(around: uiViewController, retryCount: 4)
+    }
+
+    private func applyAppearance(around uiViewController: UIViewController, retryCount: Int) {
         DispatchQueue.main.async {
-            guard let tabBar = uiViewController.tabBarController?.tabBar else { return }
+            if let tabBar = uiViewController.tabBarController?.tabBar {
+                let appearance = UITabBarAppearance()
+                appearance.configureWithOpaqueBackground()
+                appearance.backgroundColor = UIColor(red: 0.97, green: 0.96, blue: 0.94, alpha: 0.98)
+                appearance.shadowColor = UIColor.black.withAlphaComponent(0.06)
 
-            let appearance = UITabBarAppearance()
-            appearance.configureWithOpaqueBackground()
-            appearance.backgroundColor = UIColor(red: 0.97, green: 0.96, blue: 0.94, alpha: 0.98)
-            appearance.shadowColor = UIColor.black.withAlphaComponent(0.06)
+                let inactiveColor = UIColor(red: 0.74, green: 0.76, blue: 0.79, alpha: 1.0)
+                let activeColor = UIColor(AppColors.primary)
+                let layoutAppearances = [
+                    appearance.stackedLayoutAppearance,
+                    appearance.inlineLayoutAppearance,
+                    appearance.compactInlineLayoutAppearance
+                ]
+                for itemAppearance in layoutAppearances {
+                    itemAppearance.normal.iconColor = inactiveColor
+                    itemAppearance.normal.titleTextAttributes = [.foregroundColor: inactiveColor]
+                    itemAppearance.selected.iconColor = activeColor
+                    itemAppearance.selected.titleTextAttributes = [.foregroundColor: activeColor]
+                }
 
-            let inactiveColor = UIColor(AppColors.muted)
-            let activeColor = UIColor(AppColors.primary)
-            let itemAppearance = appearance.stackedLayoutAppearance
-            itemAppearance.normal.iconColor = inactiveColor
-            itemAppearance.normal.titleTextAttributes = [.foregroundColor: inactiveColor]
-            itemAppearance.selected.iconColor = activeColor
-            itemAppearance.selected.titleTextAttributes = [.foregroundColor: activeColor]
-
-            tabBar.standardAppearance = appearance
-            tabBar.scrollEdgeAppearance = appearance
-            tabBar.isTranslucent = false
-            tabBar.unselectedItemTintColor = inactiveColor
-
-            tabBar.setNeedsLayout()
-            tabBar.layoutIfNeeded()
+                tabBar.standardAppearance = appearance
+                tabBar.scrollEdgeAppearance = appearance
+                tabBar.isTranslucent = false
+                tabBar.tintColor = activeColor
+                tabBar.unselectedItemTintColor = inactiveColor
+                tabBar.setNeedsLayout()
+                tabBar.layoutIfNeeded()
+            } else if retryCount > 0 {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                    applyAppearance(around: uiViewController, retryCount: retryCount - 1)
+                }
+            }
         }
     }
 }
@@ -269,10 +296,7 @@ private struct ReceiptsView: View {
                             onTapSeeAll()
                             Haptics.light()
                         } label: {
-                            HStack(spacing: 6) {
-                                Text("See all")
-                                Image(systemName: "arrow.right")
-                            }
+                            Text("See all")
                             .font(.system(size: 13, weight: .semibold))
                             .foregroundStyle(AppColors.primary)
                             .frame(maxWidth: .infinity)

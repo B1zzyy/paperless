@@ -21,21 +21,9 @@ struct PaperlessIOSApp: App {
         appearance.shadowColor = UIColor.black.withAlphaComponent(0.06)
         appearance.backgroundEffect = nil
 
-        let inactiveColor = UIColor(red: 0.45, green: 0.49, blue: 0.54, alpha: 1.0)
-        let activeColor = UIColor(red: 0.34, green: 0.60, blue: 0.48, alpha: 1.0)
-        let itemAppearance = appearance.stackedLayoutAppearance
-        itemAppearance.normal.iconColor = inactiveColor
-        itemAppearance.normal.titleTextAttributes = [.foregroundColor: inactiveColor]
-        itemAppearance.selected.iconColor = activeColor
-        itemAppearance.selected.titleTextAttributes = [.foregroundColor: activeColor]
-
         UITabBar.appearance().standardAppearance = appearance
         UITabBar.appearance().scrollEdgeAppearance = appearance
         UITabBar.appearance().isTranslucent = false
-        UITabBar.appearance().itemPositioning = .centered
-        UITabBar.appearance().itemSpacing = 28
-        UITabBar.appearance().itemWidth = 0
-        UITabBar.appearance().unselectedItemTintColor = inactiveColor
     }
 }
 
