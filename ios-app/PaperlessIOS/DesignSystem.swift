@@ -125,6 +125,27 @@ struct ReceiptPaperCard: ViewModifier {
     }
 }
 
+struct LiquidIconButton: ViewModifier {
+    let size: CGFloat
+
+    func body(content: Content) -> some View {
+        if #available(iOS 26.0, *) {
+            content
+                .frame(width: size, height: size)
+                .glassEffect(.regular.tint(.white.opacity(0.20)).interactive(), in: .circle)
+        } else {
+            content
+                .frame(width: size, height: size)
+                .background(.ultraThinMaterial, in: Circle())
+                .overlay(
+                    Circle()
+                        .stroke(Color.white.opacity(0.42), lineWidth: 0.8)
+                )
+                .shadow(color: .black.opacity(0.08), radius: 3, x: 0, y: 1)
+        }
+    }
+}
+
 extension View {
     func glassCard() -> some View {
         modifier(GlassCard())
@@ -136,5 +157,9 @@ extension View {
 
     func receiptPaperCard() -> some View {
         modifier(ReceiptPaperCard())
+    }
+
+    func liquidIconButton(size: CGFloat = 34) -> some View {
+        modifier(LiquidIconButton(size: size))
     }
 }

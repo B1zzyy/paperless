@@ -22,6 +22,7 @@ struct ContentView: View {
     @StateObject private var profileStore = ProfileStore()
     @State private var isCameraSettingsModalVisible = false
     @AppStorage("isTotalVisible") private var isTotalVisible = true
+    @State private var showAllTransactions = false
 
     var body: some View {
         NavigationStack {
@@ -41,10 +42,11 @@ struct ContentView: View {
                         ReceiptsView(
                             selectedReceipt: $selectedReceipt,
                             receipts: receiptStore.receipts,
-                            deferNextTotalAnimation: $deferNextTotalAnimation,
-                            totalAnimationReleaseToken: totalAnimationReleaseToken,
                             displayedTotal: displayedTotal,
-                            isTotalVisible: $isTotalVisible
+                            isTotalVisible: $isTotalVisible,
+                            onTapSeeAll: {
+                                showAllTransactions = true
+                            }
                         )
                     case .scan:
                         ScanView(
@@ -83,6 +85,14 @@ struct ContentView: View {
                     selectedReceipt = nil
                     if deferNextTotalAnimation {
                         totalAnimationReleaseToken += 1
+                    }
+                }
+            }
+            .sheet(isPresented: $showAllTransactions) {
+                NavigationStack {
+                    AllTransactionsView(receipts: receiptStore.receipts) { receipt in
+                        showAllTransactions = false
+                        selectedReceipt = receipt
                     }
                 }
             }
@@ -205,13 +215,11 @@ struct ContentView: View {
 private struct ReceiptsView: View {
     @Binding var selectedReceipt: ReceiptModel?
     let receipts: [ReceiptModel]
-    @Binding var deferNextTotalAnimation: Bool
-    let totalAnimationReleaseToken: Int
     let displayedTotal: Double
     @Binding var isTotalVisible: Bool
-    @State private var showAll = false
+    let onTapSeeAll: () -> Void
 
-    private var visibleReceipts: [ReceiptModel] { showAll ? receipts : Array(receipts.prefix(3)) }
+    private var visibleReceipts: [ReceiptModel] { Array(receipts.prefix(3)) }
 
     var body: some View {
         ScrollView {
@@ -283,14 +291,12 @@ private struct ReceiptsView: View {
 
                     if receipts.count > 3 {
                         Button {
-                            withAnimation(.easeInOut(duration: 0.2)) {
-                                showAll.toggle()
-                            }
+                            onTapSeeAll()
                             Haptics.light()
                         } label: {
                             HStack(spacing: 6) {
-                                Text(showAll ? "Show less" : "View all")
-                                Text(showAll ? "↑" : "↓")
+                                Text("See all")
+                                Image(systemName: "arrow.right")
                             }
                             .font(.system(size: 13, weight: .semibold))
                             .foregroundStyle(AppColors.primary)
@@ -320,6 +326,91 @@ private struct ReceiptsView: View {
         let formatted = formatter.string(from: NSNumber(value: abs(value))) ?? "0.00"
         let masked = formatted.map { $0.isNumber ? "x" : $0 }
         return (value < 0 ? "-$" : "$") + String(masked)
+    }
+}
+
+private struct AllTransactionsView: View {
+    let receipts: [ReceiptModel]
+    let onTapReceipt: (ReceiptModel) -> Void
+    @Environment(\.dismiss) private var dismiss
+    @Environment(\.calendar) private var calendar
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 12) {
+                ForEach(groupedReceipts, id: \.day) { group in
+                    VStack(alignment: .leading, spacing: 10) {
+                        HStack(alignment: .firstTextBaseline) {
+                            Text(sectionTitle(for: group.day))
+                                .font(.system(size: 14, weight: .bold))
+                                .tracking(0.6)
+                                .foregroundStyle(AppColors.muted)
+                                .textCase(.uppercase)
+                            Spacer()
+                            Text("$\(dailyTotal(for: group.receipts), specifier: "%.2f")")
+                                .font(.system(size: 14, weight: .bold))
+                                .foregroundStyle(AppColors.muted)
+                        }
+                        .padding(.top, 6)
+
+                        VStack(spacing: 10) {
+                            ForEach(group.receipts) { receipt in
+                                ReceiptRow(receipt: receipt)
+                                    .onTapGesture {
+                                        onTapReceipt(receipt)
+                                        Haptics.medium()
+                                    }
+                            }
+                        }
+                    }
+                }
+            }
+            .padding(.horizontal, 18)
+            .padding(.top, 14)
+            .padding(.bottom, 20)
+        }
+        .scrollIndicators(.hidden)
+        .background(AppColors.bg.ignoresSafeArea())
+        .navigationTitle("All Transactions")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .topBarLeading) {
+                Button {
+                    Haptics.light()
+                    dismiss()
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 13, weight: .bold))
+                        .foregroundStyle(AppColors.text)
+                                .liquidIconButton(size: 30)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Close")
+            }
+        }
+    }
+
+    private var groupedReceipts: [(day: Date, receipts: [ReceiptModel])] {
+        let sorted = receipts.sorted { $0.purchaseDate > $1.purchaseDate }
+        let grouped = Dictionary(grouping: sorted) { calendar.startOfDay(for: $0.purchaseDate) }
+        return grouped
+            .map { (day: $0.key, receipts: $0.value) }
+            .sorted { $0.day > $1.day }
+    }
+
+    private func sectionTitle(for day: Date) -> String {
+        if calendar.isDateInToday(day) { return "Today" }
+        if calendar.isDateInYesterday(day) { return "Yesterday" }
+
+        let formatter = DateFormatter()
+        formatter.calendar = calendar
+        formatter.locale = Locale.current
+        formatter.dateFormat = "EEEE d MMM"
+        return formatter.string(from: day)
+    }
+
+    private func dailyTotal(for receipts: [ReceiptModel]) -> Double {
+        receipts.reduce(0) { $0 + $1.total }
     }
 }
 
@@ -383,8 +474,7 @@ private struct ReceiptDetailView: View {
                             Image(systemName: "chevron.left")
                                 .font(.system(size: 16, weight: .semibold))
                                 .foregroundStyle(AppColors.text)
-                                .frame(width: 34, height: 34)
-                                .background(Color.white.opacity(0.65), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                            .liquidIconButton(size: 34)
                         }
                         Spacer()
                         Text("Receipt")
