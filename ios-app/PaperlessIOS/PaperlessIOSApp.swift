@@ -3,11 +3,39 @@ import UIKit
 
 @main
 struct PaperlessIOSApp: App {
+    init() {
+        configureGlobalTabBarAppearance()
+    }
+
     var body: some Scene {
         WindowGroup {
             RootLaunchView()
                 .preferredColorScheme(.light)
         }
+    }
+
+    private func configureGlobalTabBarAppearance() {
+        let appearance = UITabBarAppearance()
+        appearance.configureWithOpaqueBackground()
+        appearance.backgroundColor = UIColor(red: 0.97, green: 0.96, blue: 0.94, alpha: 0.98)
+        appearance.shadowColor = UIColor.black.withAlphaComponent(0.06)
+        appearance.backgroundEffect = nil
+
+        let inactiveColor = UIColor(red: 0.45, green: 0.49, blue: 0.54, alpha: 1.0)
+        let activeColor = UIColor(red: 0.34, green: 0.60, blue: 0.48, alpha: 1.0)
+        let itemAppearance = appearance.stackedLayoutAppearance
+        itemAppearance.normal.iconColor = inactiveColor
+        itemAppearance.normal.titleTextAttributes = [.foregroundColor: inactiveColor]
+        itemAppearance.selected.iconColor = activeColor
+        itemAppearance.selected.titleTextAttributes = [.foregroundColor: activeColor]
+
+        UITabBar.appearance().standardAppearance = appearance
+        UITabBar.appearance().scrollEdgeAppearance = appearance
+        UITabBar.appearance().isTranslucent = false
+        UITabBar.appearance().itemPositioning = .centered
+        UITabBar.appearance().itemSpacing = 28
+        UITabBar.appearance().itemWidth = 0
+        UITabBar.appearance().unselectedItemTintColor = inactiveColor
     }
 }
 
@@ -18,8 +46,7 @@ private struct RootLaunchView: View {
     var body: some View {
         ZStack {
             ContentView()
-                .opacity(revealApp ? 1 : 0)
-                .animation(.easeOut(duration: 0.45), value: revealApp)
+                .opacity(1)
 
             SplashView(collapse: collapseSplash)
                 .opacity(revealApp ? 0 : 1)

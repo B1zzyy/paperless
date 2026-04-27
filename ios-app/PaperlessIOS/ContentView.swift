@@ -26,7 +26,7 @@ struct ContentView: View {
 
     var body: some View {
         NavigationStack {
-            ZStack(alignment: .bottom) {
+            ZStack {
                 AppColors.bg
                     .ignoresSafeArea()
 
@@ -36,36 +36,40 @@ struct ContentView: View {
                     .offset(x: -120, y: -310)
                     .allowsHitTesting(false)
 
-                Group {
-                    switch selectedTab {
-                    case .receipts:
-                        ReceiptsView(
-                            selectedReceipt: $selectedReceipt,
-                            receipts: receiptStore.receipts,
-                            displayedTotal: displayedTotal,
-                            isTotalVisible: $isTotalVisible,
-                            onTapSeeAll: {
-                                showAllTransactions = true
+                TabView(selection: $selectedTab) {
+                    ReceiptsView(
+                        selectedReceipt: $selectedReceipt,
+                        receipts: receiptStore.receipts,
+                        displayedTotal: displayedTotal,
+                        isTotalVisible: $isTotalVisible,
+                        onTapSeeAll: {
+                            showAllTransactions = true
+                        }
+                    )
+                    .tag(AppTab.receipts)
+                    .tabItem { Label("Receipts", systemImage: "doc.text") }
+
+                    ScanView(
+                        onReceiptScanned: { scannedReceipt in
+                            deferNextTotalAnimation = true
+                            receiptStore.add(scannedReceipt)
+                            selectedTab = .receipts
+                            DispatchQueue.main.async {
+                                Haptics.success()
+                                selectedReceipt = scannedReceipt
                             }
-                        )
-                    case .scan:
-                        ScanView(
-                            onReceiptScanned: { scannedReceipt in
-                                deferNextTotalAnimation = true
-                                receiptStore.add(scannedReceipt)
-                                selectedTab = .receipts
-                                DispatchQueue.main.async {
-                                    Haptics.success()
-                                    selectedReceipt = scannedReceipt
-                                }
-                            },
-                            isCameraSettingsModalVisible: $isCameraSettingsModalVisible
-                        )
-                    case .profile:
-                        ProfileView(profileStore: profileStore)
-                    }
+                        },
+                        isCameraSettingsModalVisible: $isCameraSettingsModalVisible
+                    )
+                    .tag(AppTab.scan)
+                    .tabItem { Label("Scan", systemImage: "qrcode.viewfinder") }
+
+                    ProfileView(profileStore: profileStore)
+                        .tag(AppTab.profile)
+                        .tabItem { Label("Profile", systemImage: "person.crop.circle") }
                 }
-                .padding(.bottom, 90)
+                .tint(AppColors.primary)
+                .background(TabBarRuntimeConfigurator())
 
                 if isCameraSettingsModalVisible {
                     Color.black.opacity(0.42)
@@ -74,11 +78,6 @@ struct ContentView: View {
                         .zIndex(40)
                 }
 
-                tabBar
-                    .frame(maxWidth: 420)
-                    .padding(.horizontal, 30)
-                    .padding(.bottom, 8)
-                    .zIndex(50)
             }
             .navigationDestination(item: $selectedReceipt) { receipt in
                 ReceiptDetailView(receipt: receipt) {
@@ -149,66 +148,42 @@ struct ContentView: View {
         }
     }
 
-    private var tabBar: some View {
-        GeometryReader { proxy in
-            let contentWidth = proxy.size.width - 16 // horizontal padding inside bar
-            let slotWidth = contentWidth / 3
-            let activeX = CGFloat(activeTabIndex) * slotWidth + 8
+}
 
-            ZStack(alignment: .leading) {
-                Capsule(style: .continuous)
-                    .fill(Color.clear)
-                    .liquidCapsule(tint: .white.opacity(0.08))
-
-                Capsule(style: .continuous)
-                    .fill(Color.clear)
-                    .liquidCapsule(tint: AppColors.primary.opacity(0.08), interactive: false)
-                    .frame(width: slotWidth, height: 54)
-                    .offset(x: activeX, y: 0)
-                    .allowsHitTesting(false)
-
-                HStack(spacing: 6) {
-                    tabButton(icon: "doc.text", title: "Receipts", tab: .receipts)
-                    tabButton(icon: "qrcode.viewfinder", title: "Scan", tab: .scan)
-                    tabButton(icon: "person.crop.circle", title: "Profile", tab: .profile)
-                }
-                .padding(.vertical, 8)
-                .padding(.horizontal, 8)
-            }
-            .animation(.easeOut(duration: 0.20), value: selectedTab)
-        }
-        .frame(height: 78)
+private struct TabBarRuntimeConfigurator: UIViewControllerRepresentable {
+    func makeUIViewController(context: Context) -> UIViewController {
+        let controller = UIViewController()
+        controller.view.isHidden = true
+        return controller
     }
 
-    private var activeTabIndex: Int {
-        switch selectedTab {
-        case .receipts: return 0
-        case .scan: return 1
-        case .profile: return 2
-        }
-    }
+    func updateUIViewController(_ uiViewController: UIViewController, context: Context) {
+        // Configure the concrete tab bar instance so style is applied on first render,
+        // not only after scene transitions.
+        DispatchQueue.main.async {
+            guard let tabBar = uiViewController.tabBarController?.tabBar else { return }
 
-    private func tabButton(icon: String, title: String, tab: AppTab) -> some View {
-        let active = selectedTab == tab
-        return Button {
-            withAnimation(.easeOut(duration: 0.20)) {
-                selectedTab = tab
-            }
-            Haptics.light()
-        } label: {
-            VStack(spacing: 3) {
-                Image(systemName: icon)
-                    .font(.system(size: 18, weight: .semibold))
-                Text(title)
-                    .font(.system(size: 11, weight: .medium))
-            }
-            .padding(.vertical, 10)
-            .foregroundStyle(active ? AppColors.primary : AppColors.muted.opacity(0.9))
-            .frame(maxWidth: .infinity)
-            .frame(height: 54)
-            .contentShape(Capsule(style: .continuous))
+            let appearance = UITabBarAppearance()
+            appearance.configureWithOpaqueBackground()
+            appearance.backgroundColor = UIColor(red: 0.97, green: 0.96, blue: 0.94, alpha: 0.98)
+            appearance.shadowColor = UIColor.black.withAlphaComponent(0.06)
+
+            let inactiveColor = UIColor(AppColors.muted)
+            let activeColor = UIColor(AppColors.primary)
+            let itemAppearance = appearance.stackedLayoutAppearance
+            itemAppearance.normal.iconColor = inactiveColor
+            itemAppearance.normal.titleTextAttributes = [.foregroundColor: inactiveColor]
+            itemAppearance.selected.iconColor = activeColor
+            itemAppearance.selected.titleTextAttributes = [.foregroundColor: activeColor]
+
+            tabBar.standardAppearance = appearance
+            tabBar.scrollEdgeAppearance = appearance
+            tabBar.isTranslucent = false
+            tabBar.unselectedItemTintColor = inactiveColor
+
+            tabBar.setNeedsLayout()
+            tabBar.layoutIfNeeded()
         }
-        .buttonStyle(.plain)
     }
 }
 
@@ -799,6 +774,19 @@ private struct TicketPrinterView<Content: View>: View {
             guard !Task.isCancelled else { return }
             Haptics.startSoftContinuous(duration: printDuration - hapticsStartDelay)
         }
+    }
+
+    private func configureNativeTabBarAppearance() {
+        let appearance = UITabBarAppearance()
+        appearance.configureWithOpaqueBackground()
+        appearance.backgroundColor = UIColor(AppColors.bg).withAlphaComponent(0.96)
+        appearance.shadowColor = UIColor.black.withAlphaComponent(0.05)
+
+        UITabBar.appearance().standardAppearance = appearance
+        UITabBar.appearance().scrollEdgeAppearance = appearance
+        UITabBar.appearance().itemPositioning = .fill
+        UITabBar.appearance().itemSpacing = 0
+        UITabBar.appearance().itemWidth = 0
     }
 }
 
