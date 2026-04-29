@@ -12,6 +12,7 @@ private enum AppTab: Hashable {
 struct ContentView: View {
     @State private var selectedTab: AppTab = .receipts
     @State private var selectedReceipt: ReceiptModel?
+    @State private var selectedReceiptSplitPercent: Double?
     @StateObject private var receiptStore = ReceiptStore()
     @State private var deferNextTotalAnimation = false
     @State private var totalAnimationReleaseToken = 0
@@ -23,6 +24,7 @@ struct ContentView: View {
     @State private var isCameraSettingsModalVisible = false
     @AppStorage("isTotalVisible") private var isTotalVisible = true
     @State private var showAllTransactions = false
+    @State private var hasInitializedTabHaptics = false
 
     var body: some View {
         NavigationStack {
@@ -61,6 +63,7 @@ struct ContentView: View {
                             selectedTab = .receipts
                             DispatchQueue.main.async {
                                 Haptics.success()
+                                selectedReceiptSplitPercent = nil
                                 selectedReceipt = scannedReceipt
                             }
                         },
@@ -95,8 +98,9 @@ struct ContentView: View {
 
             }
             .navigationDestination(item: $selectedReceipt) { receipt in
-                ReceiptDetailView(receipt: receipt) {
+                ReceiptDetailView(receipt: receipt, splitPercent: selectedReceiptSplitPercent) {
                     selectedReceipt = nil
+                    selectedReceiptSplitPercent = nil
                     if deferNextTotalAnimation {
                         totalAnimationReleaseToken += 1
                     }
@@ -106,6 +110,7 @@ struct ContentView: View {
                 NavigationStack {
                     AllTransactionsView(receipts: receiptStore.receipts) { receipt in
                         showAllTransactions = false
+                        selectedReceiptSplitPercent = nil
                         selectedReceipt = receipt
                     }
                 }
@@ -116,6 +121,15 @@ struct ContentView: View {
                 if !hasInitializedDisplayedTotal {
                     displayedTotal = totalSpent
                     hasInitializedDisplayedTotal = true
+                }
+                hasInitializedTabHaptics = false
+            }
+            .onChange(of: selectedTab) { _, _ in
+                if hasInitializedTabHaptics {
+                    Haptics.light()
+                } else {
+                    // Skip first render assignment; only vibrate on user tab changes.
+                    hasInitializedTabHaptics = true
                 }
             }
             .onChange(of: totalSpent) { _, newValue in
@@ -130,6 +144,13 @@ struct ContentView: View {
                 pendingTotalAfterDetail = nil
                 deferNextTotalAnimation = false
                 animateTotal(to: pending)
+            }
+            .onOpenURL { url in
+                guard let payload = ReceiptShareLink.parse(url) else { return }
+                selectedTab = .receipts
+                selectedReceiptSplitPercent = payload.splitPercent
+                selectedReceipt = payload.receipt
+                Haptics.success()
             }
         }
     }
@@ -379,9 +400,9 @@ private struct AllTransactionsView: View {
                     dismiss()
                 } label: {
                     Image(systemName: "xmark")
-                        .font(.system(size: 13, weight: .bold))
+                        .font(.system(size: 16, weight: .semibold))
                         .foregroundStyle(AppColors.text)
-                                .liquidIconButton(size: 30)
+                        .liquidIconButton(size: 34)
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("Close")
@@ -451,11 +472,13 @@ private struct ReceiptRow: View {
 
 private struct ReceiptDetailView: View {
     let receipt: ReceiptModel
+    let splitPercent: Double?
     let onClose: () -> Void
     @Environment(\.dismiss) private var dismiss
     @State private var isPrinting = false
     @State private var printStartTask: Task<Void, Never>?
     @State private var didTriggerEdgeDismiss = false
+    @State private var showShareSheet = false
     private static let receiptDateFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.dateFormat = "MMM d, yyyy · h:mm a"
@@ -479,8 +502,16 @@ private struct ReceiptDetailView: View {
                         Text("Receipt")
                             .font(.system(size: 17, weight: .semibold))
                         Spacer()
-                        Color.clear
-                            .frame(width: 34, height: 34)
+                        Button {
+                            showShareSheet = true
+                            Haptics.light()
+                        } label: {
+                            Image(systemName: "square.and.arrow.up")
+                                .font(.system(size: 14, weight: .bold))
+                                .foregroundStyle(AppColors.text)
+                                .liquidIconButton(size: 34)
+                        }
+                        .buttonStyle(.plain)
                     }
                     .padding(.horizontal, 2)
 
@@ -535,8 +566,19 @@ private struct ReceiptDetailView: View {
                                                 }
                                             }
                                             Spacer()
+                                        if isSplitView {
+                                            VStack(alignment: .trailing, spacing: 2) {
+                                                Text("$\(item.total, specifier: "%.2f")")
+                                                    .font(.system(size: 13, weight: .medium))
+                                                    .foregroundStyle(AppColors.muted)
+                                                    .strikethrough(true, color: AppColors.muted)
+                                                Text("$\(splitValue(item.total), specifier: "%.2f")")
+                                                    .font(.system(size: 18, weight: .semibold))
+                                            }
+                                        } else {
                                             Text("$\(item.total, specifier: "%.2f")")
                                                 .font(.system(size: 18, weight: .semibold))
+                                        }
                                         }
                                     }
                                 }
@@ -550,26 +592,59 @@ private struct ReceiptDetailView: View {
                                     Text("Subtotal")
                                         .foregroundStyle(AppColors.muted)
                                     Spacer()
+                                if isSplitView {
+                                    VStack(alignment: .trailing, spacing: 1) {
+                                        Text("$\(subtotal, specifier: "%.2f")")
+                                            .font(.system(size: 13, weight: .medium))
+                                            .foregroundStyle(AppColors.muted)
+                                            .strikethrough(true, color: AppColors.muted)
+                                        Text("$\(splitValue(subtotal), specifier: "%.2f")")
+                                            .foregroundStyle(AppColors.muted)
+                                    }
+                                } else {
                                     Text("$\(subtotal, specifier: "%.2f")")
                                         .foregroundStyle(AppColors.muted)
+                                }
                                 }
 
                                 HStack {
                                     Text("Tax")
                                         .foregroundStyle(AppColors.muted)
                                     Spacer()
+                                if isSplitView {
+                                    VStack(alignment: .trailing, spacing: 1) {
+                                        Text("$\(tax, specifier: "%.2f")")
+                                            .font(.system(size: 13, weight: .medium))
+                                            .foregroundStyle(AppColors.muted)
+                                            .strikethrough(true, color: AppColors.muted)
+                                        Text("$\(splitValue(tax), specifier: "%.2f")")
+                                            .foregroundStyle(AppColors.muted)
+                                    }
+                                } else {
                                     Text("$\(tax, specifier: "%.2f")")
                                         .foregroundStyle(AppColors.muted)
+                                }
                                 }
 
                                 Divider()
 
                                 HStack {
-                                    Text("Total")
+                                Text(isSplitView ? "Your Total" : "Total")
                                         .font(.system(size: 34, weight: .bold))
                                     Spacer()
+                                if isSplitView {
+                                    VStack(alignment: .trailing, spacing: 1) {
+                                        Text("$\(receipt.total, specifier: "%.2f")")
+                                            .font(.system(size: 16, weight: .medium))
+                                            .foregroundStyle(AppColors.muted)
+                                            .strikethrough(true, color: AppColors.muted)
+                                        Text("$\(splitValue(receipt.total), specifier: "%.2f")")
+                                            .font(.system(size: 34, weight: .bold))
+                                    }
+                                } else {
                                     Text("$\(receipt.total, specifier: "%.2f")")
                                         .font(.system(size: 34, weight: .bold))
+                                }
                                 }
                             }
                             .font(.system(size: 16, weight: .medium))
@@ -616,6 +691,9 @@ private struct ReceiptDetailView: View {
             printStartTask?.cancel()
             onClose()
         }
+        .sheet(isPresented: $showShareSheet) {
+            ReceiptShareSheet(receipt: receipt)
+        }
     }
 
     private var subtotal: Double {
@@ -632,6 +710,126 @@ private struct ReceiptDetailView: View {
 
     private func formattedDate(_ date: Date) -> String {
         Self.receiptDateFormatter.string(from: date)
+    }
+
+    private var effectiveSplitPercent: Double {
+        max(1, min(100, splitPercent ?? 100))
+    }
+
+    private var isSplitView: Bool {
+        effectiveSplitPercent < 100
+    }
+
+    private func splitValue(_ value: Double) -> Double {
+        (value * effectiveSplitPercent) / 100
+    }
+}
+
+private struct ReceiptShareSheet: View {
+    let receipt: ReceiptModel
+    @Environment(\.dismiss) private var dismiss
+    @State private var selectedPreset: SharePreset = .full
+    @State private var copied = false
+
+    private enum SharePreset: Int, CaseIterable, Identifiable {
+        case full = 100
+        case p75 = 75
+        case p50 = 50
+        case p33 = 33
+        case p25 = 25
+
+        var id: Int { rawValue }
+
+        var title: String {
+            switch self {
+            case .full:
+                return "Full"
+            default:
+                return "\(rawValue)%"
+            }
+        }
+
+        var splitPercent: Double { Double(rawValue) }
+    }
+
+    var body: some View {
+        NavigationStack {
+            VStack(alignment: .leading, spacing: 16) {
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("Share preset")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(AppColors.muted)
+
+                    HStack(spacing: 8) {
+                        ForEach(SharePreset.allCases) { preset in
+                            Button {
+                                selectedPreset = preset
+                                copied = false
+                                Haptics.light()
+                            } label: {
+                                Text(preset.title)
+                                    .font(.system(size: 13, weight: .semibold))
+                                    .foregroundStyle(selectedPreset == preset ? AppColors.primary : AppColors.text)
+                                    .frame(maxWidth: .infinity)
+                                    .frame(height: 34)
+                                    .liquidCapsule(
+                                        tint: selectedPreset == preset ? AppColors.primary.opacity(0.22) : .white.opacity(0.10),
+                                        interactive: selectedPreset == preset
+                                    )
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                }
+
+                if let url = shareURL {
+                    Button {
+                        UIPasteboard.general.string = url.absoluteString
+                        copied = true
+                        Haptics.light()
+                    } label: {
+                        Label(copied ? "Copied" : "Copy Link", systemImage: copied ? "checkmark" : "doc.on.doc")
+                            .font(.system(size: 15, weight: .semibold))
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 46)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(AppColors.primary)
+                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                } else {
+                    Text("Could not create share link.")
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(.red)
+                }
+
+                Spacer()
+            }
+            .padding(18)
+            .navigationTitle("Share Receipt")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button {
+                        Haptics.light()
+                        dismiss()
+                    } label: {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 16, weight: .semibold))
+                            .foregroundStyle(AppColors.text)
+                            .liquidIconButton(size: 34)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Close")
+                }
+            }
+        }
+    }
+
+    private var shareURL: URL? {
+        ReceiptShareLink.url(
+            for: receipt,
+            splitPercent: selectedPreset.splitPercent
+        )
     }
 }
 
